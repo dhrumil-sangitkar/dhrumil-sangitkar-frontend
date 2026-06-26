@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Decorative gold gradient text */
+.gold-text-gradient {
+  background: linear-gradient(135deg, #FFFDF0 0%, #D4AF37 50%, #AA7C11 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Custom scrollbar to match theme */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #07091B;
+}
+::-webkit-scrollbar-thumb {
+  background: #D4AF37;
+  border-radius: 4px;
+}
+
+.custom-modal-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-modal-scrollbar::-webkit-scrollbar-track {
+  background: #07091B;
+  border-radius: 8px;
+}
+.custom-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: #D4AF37;
+  border-radius: 8px;
+}
+
+/* Selection color */
+::selection {
+  background: #D4AF37;
+  color: #07091B;
+}
+
+/* Gold border gradient */
+.gold-border-gradient {
+  border-image: linear-gradient(to right, #855E0B, #D4AF37, #FFFDF0, #D4AF37, #855E0B) 1;
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Remove focus outline inconsistencies */
+input:focus, select:focus, textarea:focus {
+  outline: none;
+}
