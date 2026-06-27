@@ -4,12 +4,12 @@ import { mediaApi, servicesApi } from '../services/api';
 
 const MAX_MEDIA_ITEMS = 50;
 
-// ─── Context Types ────────────────────────────────────────────
 interface MediaContextType {
   mediaItems: MediaItem[];
   serviceItems: ServiceItem[];
   isAdmin: boolean;
   isLoading: boolean;
+  backendOnline: boolean;
   toasts: ToastMessage[];
   maxMediaItems: number;
   setIsAdmin: (val: boolean) => void;
@@ -30,6 +30,7 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [backendOnline, setBackendOnline] = useState(true);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const showToast = useCallback((message: string, type: ToastMessage['type'] = 'success') => {
@@ -42,16 +43,18 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // ─── Load media from backend ──────────────────────────────
+  // ─── Load media — silent fail for visitors ────────────────
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
       try {
         const data = await mediaApi.getAll();
         setMediaItems(data.sort((a, b) => b.timestamp - a.timestamp));
+        setBackendOnline(true);
       } catch (err) {
-        console.error('Failed to load media from backend:', err);
-        showToast('Could not reach backend — check if server is running.', 'error');
+        console.warn('Backend not reachable. Running in offline mode.', err);
+        setBackendOnline(false);
+        // No toast shown to visitors — only admins see errors on write
       } finally {
         setIsLoading(false);
       }
@@ -59,14 +62,14 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
     load();
   }, []);
 
-  // ─── Load services from backend ───────────────────────────
+  // ─── Load services — silent fail ──────────────────────────
   useEffect(() => {
     const load = async () => {
       try {
         const data = await servicesApi.getAll();
         setServiceItems(data);
       } catch (err) {
-        console.error('Failed to load services from backend:', err);
+        console.warn('Could not load services from backend.', err);
       }
     };
     load();
@@ -75,48 +78,84 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
   // ─── Media CRUD ───────────────────────────────────────────
   const addMediaItem = async (item: Omit<MediaItem, 'id' | 'timestamp'>) => {
     if (mediaItems.length >= MAX_MEDIA_ITEMS) {
-      showToast(`Maximum ${MAX_MEDIA_ITEMS} media items allowed. Please delete one first.`, 'error');
+      showToast(`Maximum ${MAX_MEDIA_ITEMS} media items allowed.`, 'error');
       return;
     }
-    const created = await mediaApi.create(item);
-    setMediaItems((prev) => [created, ...prev]);
-    showToast('Media added successfully!');
+    try {
+      const created = await mediaApi.create(item);
+      setMediaItems((prev) => [created, ...prev]);
+      showToast('Media added successfully!');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(msg || 'Failed to add media. Please try again.', 'error');
+      throw err; // re-throw so form doesn't close
+    }
   };
 
   const updateMediaItem = async (id: string, item: Partial<MediaItem>) => {
-    const updated = await mediaApi.update(id, item);
-    setMediaItems((prev) => prev.map((m) => (m.id === id ? updated : m)));
-    showToast('Media updated successfully!');
+    try {
+      const updated = await mediaApi.update(id, item);
+      setMediaItems((prev) => prev.map((m) => (m.id === id ? updated : m)));
+      showToast('Media updated successfully!');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(msg || 'Failed to update media. Please try again.', 'error');
+      throw err;
+    }
   };
 
   const deleteMediaItem = async (id: string) => {
-    await mediaApi.delete(id);
-    setMediaItems((prev) => prev.filter((m) => m.id !== id));
-    showToast('Media deleted successfully!', 'info');
+    try {
+      await mediaApi.delete(id);
+      setMediaItems((prev) => prev.filter((m) => m.id !== id));
+      showToast('Media deleted successfully!', 'info');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(msg || 'Failed to delete media. Please try again.', 'error');
+      throw err;
+    }
   };
 
   // ─── Service CRUD ─────────────────────────────────────────
   const addServiceItem = async (item: Omit<ServiceItem, 'id' | 'timestamp'>) => {
-    const created = await servicesApi.create(item);
-    setServiceItems((prev) => [...prev, created]);
-    showToast('Service added successfully!');
+    try {
+      const created = await servicesApi.create(item);
+      setServiceItems((prev) => [...prev, created]);
+      showToast('Service added successfully!');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(msg || 'Failed to add service. Please try again.', 'error');
+      throw err;
+    }
   };
 
   const updateServiceItem = async (id: string, item: Partial<ServiceItem>) => {
-    const updated = await servicesApi.update(id, item);
-    setServiceItems((prev) => prev.map((s) => (s.id === id ? updated : s)));
-    showToast('Service updated successfully!');
+    try {
+      const updated = await servicesApi.update(id, item);
+      setServiceItems((prev) => prev.map((s) => (s.id === id ? updated : s)));
+      showToast('Service updated successfully!');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(msg || 'Failed to update service. Please try again.', 'error');
+      throw err;
+    }
   };
 
   const deleteServiceItem = async (id: string) => {
-    await servicesApi.delete(id);
-    setServiceItems((prev) => prev.filter((s) => s.id !== id));
-    showToast('Service deleted successfully!', 'info');
+    try {
+      await servicesApi.delete(id);
+      setServiceItems((prev) => prev.filter((s) => s.id !== id));
+      showToast('Service deleted successfully!', 'info');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      showToast(msg || 'Failed to delete service. Please try again.', 'error');
+      throw err;
+    }
   };
 
   return (
     <MediaContext.Provider value={{
-      mediaItems, serviceItems, isAdmin, isLoading, toasts,
+      mediaItems, serviceItems, isAdmin, isLoading, backendOnline, toasts,
       maxMediaItems: MAX_MEDIA_ITEMS,
       setIsAdmin,
       addMediaItem, updateMediaItem, deleteMediaItem,

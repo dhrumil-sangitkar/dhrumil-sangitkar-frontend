@@ -25,7 +25,9 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
   const [filePreview, setFilePreview] = useState('');
   const [filePreviews, setFilePreviews] = useState<string[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const openAdd = () => {
     setForm(emptyForm);
@@ -56,7 +58,6 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // file_image supports multiple photos in one media addition
     if (form.type === 'file_image') {
       const fileArray = Array.from(files);
       const readers = fileArray.map(
@@ -114,6 +115,7 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       return;
     }
 
+    setSaving(true);
     const payload = {
       title: form.title,
       gujaratiTitle: form.gujaratiTitle,
@@ -124,19 +126,33 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       category: form.category,
     };
 
-    if (isEditing && form.id) {
-      await updateMediaItem(form.id, payload);
-    } else {
-      await addMediaItem(payload);
+    try {
+      if (isEditing && form.id) {
+        await updateMediaItem(form.id, payload);
+      } else {
+        await addMediaItem(payload);
+      }
+      // Only close form on success
+      setShowForm(false);
+      setForm(emptyForm);
+      setFilePreviews([]);
+    } catch {
+      // Error toast already shown by context — keep form open so user can fix
+    } finally {
+      setSaving(false);
     }
-    setShowForm(false);
-    setForm(emptyForm);
-    setFilePreviews([]);
   };
 
   const handleDelete = async (id: string) => {
-    await deleteMediaItem(id);
-    setConfirmDelete(null);
+    setDeleting(id);
+    try {
+      await deleteMediaItem(id);
+      setConfirmDelete(null);
+    } catch {
+      // Error toast shown by context
+    } finally {
+      setDeleting(null);
+    }
   };
 
   const autoFill = async () => {
@@ -300,11 +316,6 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                       onChange={handleFileChange}
                       className="w-full bg-royal-900 border border-gold-500/20 rounded-lg px-3 py-2 text-slate-200 text-sm"
                     />
-                    {form.type === 'file_image' && (
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Select multiple photos to create a single swipeable gallery item.
-                      </p>
-                    )}
                     {form.type === 'file_image' && filePreviews.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {filePreviews.map((src, idx) => (
@@ -314,7 +325,6 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                               type="button"
                               onClick={() => removePreviewImage(idx)}
                               className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-[9px] shadow"
-                              title="Remove"
                             >
                               <i className="fas fa-times" />
                             </button>
@@ -374,15 +384,18 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                   <button
                     type="button"
                     onClick={() => setShowForm(false)}
-                    className="px-4 py-2 bg-royal-800 hover:bg-royal-700 text-slate-300 rounded-lg text-xs font-semibold transition"
+                    disabled={saving}
+                    className="px-4 py-2 bg-royal-800 hover:bg-royal-700 text-slate-300 rounded-lg text-xs font-semibold transition disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 bg-gold-500 hover:bg-gold-600 text-royal-950 rounded-lg text-xs font-bold transition shadow-md"
+                    disabled={saving}
+                    className="px-5 py-2 bg-gold-500 hover:bg-gold-600 text-royal-950 rounded-lg text-xs font-bold transition shadow-md disabled:opacity-60 flex items-center gap-2"
                   >
-                    Save Changes
+                    {saving && <i className="fas fa-circle-notch animate-spin" />}
+                    {saving ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </form>
@@ -422,11 +435,6 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                     <span className="text-[9px] bg-gold-500/10 text-gold-500 px-1.5 py-0.5 rounded border border-gold-500/20 font-semibold uppercase tracking-wider">
                       {item.type}
                     </span>
-                    {item.images && item.images.length > 1 && (
-                      <span className="text-[9px] bg-royal-800 text-slate-300 px-1.5 py-0.5 rounded border border-gold-500/10 font-semibold ml-1">
-                        <i className="fas fa-images mr-1" />{item.images.length} photos
-                      </span>
-                    )}
                   </div>
                   {/* Actions */}
                   <div className="flex gap-2 shrink-0">
@@ -441,13 +449,16 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                       <div className="flex gap-1">
                         <button
                           onClick={() => handleDelete(item.id)}
-                          className="px-2 h-8 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition"
+                          disabled={deleting === item.id}
+                          className="px-2 h-8 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-bold transition disabled:opacity-60 flex items-center gap-1"
                         >
-                          Confirm
+                          {deleting === item.id ? <i className="fas fa-circle-notch animate-spin" /> : null}
+                          {deleting === item.id ? 'Deleting...' : 'Confirm'}
                         </button>
                         <button
                           onClick={() => setConfirmDelete(null)}
-                          className="w-8 h-8 bg-royal-800 text-slate-400 rounded-lg flex items-center justify-center text-xs transition"
+                          disabled={deleting === item.id}
+                          className="w-8 h-8 bg-royal-800 text-slate-400 rounded-lg flex items-center justify-center text-xs transition disabled:opacity-50"
                         >
                           <i className="fas fa-times" />
                         </button>
@@ -464,6 +475,12 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                   </div>
                 </div>
               ))}
+              {mediaItems.length === 0 && (
+                <div className="text-center py-8 text-slate-500 text-xs">
+                  <i className="fas fa-photo-film text-2xl mb-2 block opacity-30" />
+                  No media items yet. Click "Add New Media" to get started.
+                </div>
+              )}
             </div>
           </div>
         </div>
