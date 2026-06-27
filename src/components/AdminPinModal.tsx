@@ -7,8 +7,6 @@ interface Props {
   onSuccess: () => void;
 }
 
-const HARDCODED_PIN = '1008'; // fallback if backend not available
-
 const AdminPinModal: React.FC<Props> = ({ onClose, onSuccess }) => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -28,9 +26,8 @@ const AdminPinModal: React.FC<Props> = ({ onClose, onSuccess }) => {
     setError('');
 
     try {
-      // Try backend verification first
       const { token, success } = await authApi.verifyPin(pin);
-      if (success) {
+      if (success && token) {
         localStorage.setItem('admin_token', token);
         setIsAdmin(true);
         showToast('Admin access granted!', 'success');
@@ -38,14 +35,15 @@ const AdminPinModal: React.FC<Props> = ({ onClose, onSuccess }) => {
       } else {
         setError('Incorrect PIN. Please try again.');
       }
-    } catch {
-      // Fallback to hardcoded PIN when backend unavailable
-      if (pin === HARDCODED_PIN) {
-        setIsAdmin(true);
-        showToast('Admin access granted (offline mode)!', 'success');
-        onSuccess();
-      } else {
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401) {
         setError('Incorrect PIN. Please try again.');
+      } else if (status === 429) {
+        setError('Too many attempts. Please wait 15 minutes.');
+      } else {
+        // Backend unreachable
+        setError('Cannot connect to server. Please check your internet connection.');
       }
     } finally {
       setLoading(false);
@@ -75,9 +73,7 @@ const AdminPinModal: React.FC<Props> = ({ onClose, onSuccess }) => {
           </div>
           <div>
             <h3 className="font-cinzel text-xl font-bold text-slate-200">Enter Admin PIN</h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Authorized Access Only.
-            </p>
+            <p className="text-xs text-slate-400 mt-1">Authorized Access Only.</p>
           </div>
 
           <div className="space-y-4 mt-6">

@@ -1,18 +1,15 @@
 import axios from 'axios';
 import { MediaItem, BookingFormData, ServiceItem } from '../types';
 
-// Base URL - update this with your actual backend URL
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 10000,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15000,
 });
 
-// Request interceptor - add auth token if available
+// ─── Request interceptor: attach JWT token ────────────────────
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('admin_token');
   if (token) {
@@ -21,10 +18,16 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Response interceptor for error handling
+// ─── Response interceptor: handle 401 (expired/missing token) ─
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 401) {
+      // Clear stale token so next admin action prompts re-login
+      localStorage.removeItem('admin_token');
+      // Dispatch a custom event so the app can react (show PIN modal)
+      window.dispatchEvent(new CustomEvent('admin:session-expired'));
+    }
     console.error('API Error:', error.response?.data || error.message);
     return Promise.reject(error);
   }
@@ -73,3 +76,4 @@ export const servicesApi = {
   delete: (id: string): Promise<void> =>
     api.delete(`/services/${id}`).then((r) => r.data),
 };
+4
