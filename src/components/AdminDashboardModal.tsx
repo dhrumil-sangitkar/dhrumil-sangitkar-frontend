@@ -121,7 +121,7 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       gujaratiTitle: form.gujaratiTitle,
       type: form.type,
       url: form.url,
-      images: form.images && form.images.length > 1 ? form.images : undefined,
+      images: form.images && form.images.length > 0 ? form.images : undefined,
       description: form.description,
       category: form.category,
     };
