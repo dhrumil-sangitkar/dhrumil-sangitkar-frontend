@@ -14,7 +14,7 @@ const emptyForm: BookingFormData = {
 const ContactSection: React.FC = () => {
   const [form, setForm] = useState<BookingFormData>(emptyForm);
   const [submitting, setSubmitting] = useState(false);
-  const { showToast, serviceItems } = useMedia();
+  const { showToast, serviceItems, isServicesLoading } = useMedia();
 
   // Build dropdown options dynamically from the Religious Musical Services data
   const serviceOptions = serviceItems.map((s) => (s.gujarati ? `${s.name} (${s.gujarati})` : s.name));

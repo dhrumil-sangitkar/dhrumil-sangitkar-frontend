@@ -2,7 +2,7 @@ import React from 'react';
 import { useMedia } from '../context/MediaContext';
 
 const DigitalCard: React.FC = () => {
-  const { serviceItems } = useMedia();
+  const { serviceItems, isServicesLoading } = useMedia();
 
   // Use the Gujarati name from each Religious Musical Service (fallback to English name if missing)
   const services = serviceItems.map((s) => s.gujarati?.trim() || s.name);
@@ -79,19 +79,28 @@ const DigitalCard: React.FC = () => {
             <div className="my-4 space-y-2 flex-1">
               <h4 className="font-cinzel text-xl text-gold-500 font-semibold border-b border-gold-500/20 pb-1">Dhrumil Shah</h4>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-300">
-                {services.map((s, idx) => {
-                  const isLast = idx === services.length - 1;
-                  const centerLast = isOdd && isLast;
-                  return (
-                    <div
-                      key={s + idx}
-                      className={`flex items-start gap-1.5 ${centerLast ? 'col-span-2 justify-center' : ''}`}
-                    >
-                      <span className="text-gold-500 shrink-0">•</span>
-                      <span className="leading-snug">{s}</span>
+                {isServicesLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex items-start gap-1.5 animate-pulse">
+                      <span className="text-gold-500/30 shrink-0">•</span>
+                      <div className="h-3 bg-slate-700/40 rounded w-full mt-0.5" />
                     </div>
-                  );
-                })}
+                  ))
+                ) : (
+                  services.map((s, idx) => {
+                    const isLast = idx === services.length - 1;
+                    const centerLast = isOdd && isLast;
+                    return (
+                      <div
+                        key={s + idx}
+                        className={`flex items-start gap-1.5 ${centerLast ? 'col-span-2 justify-center' : ''}`}
+                      >
+                        <span className="text-gold-500 shrink-0">•</span>
+                        <span className="leading-snug">{s}</span>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 

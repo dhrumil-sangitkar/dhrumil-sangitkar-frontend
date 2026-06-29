@@ -8,7 +8,8 @@ interface MediaContextType {
   mediaItems: MediaItem[];
   serviceItems: ServiceItem[];
   isAdmin: boolean;
-  isLoading: boolean;
+  isLoading: boolean;         // media loading
+  isServicesLoading: boolean; // services loading (separate flag)
   backendOnline: boolean;
   toasts: ToastMessage[];
   maxMediaItems: number;
@@ -30,6 +31,7 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isServicesLoading, setIsServicesLoading] = useState(true);
   const [backendOnline, setBackendOnline] = useState(true);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -43,7 +45,7 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // ─── Load media — silent fail for visitors ────────────────
+  // ─── Load media ───────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       setIsLoading(true);
@@ -52,9 +54,8 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
         setMediaItems(data.sort((a, b) => b.timestamp - a.timestamp));
         setBackendOnline(true);
       } catch (err) {
-        console.warn('Backend not reachable. Running in offline mode.', err);
+        console.warn('Backend not reachable.', err);
         setBackendOnline(false);
-        // No toast shown to visitors — only admins see errors on write
       } finally {
         setIsLoading(false);
       }
@@ -62,14 +63,17 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
     load();
   }, []);
 
-  // ─── Load services — silent fail ──────────────────────────
+  // ─── Load services ────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
+      setIsServicesLoading(true);
       try {
         const data = await servicesApi.getAll();
         setServiceItems(data);
       } catch (err) {
         console.warn('Could not load services from backend.', err);
+      } finally {
+        setIsServicesLoading(false);
       }
     };
     load();
@@ -88,7 +92,7 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       showToast(msg || 'Failed to add media. Please try again.', 'error');
-      throw err; // re-throw so form doesn't close
+      throw err;
     }
   };
 
@@ -155,7 +159,7 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <MediaContext.Provider value={{
-      mediaItems, serviceItems, isAdmin, isLoading, backendOnline, toasts,
+      mediaItems, serviceItems, isAdmin, isLoading, isServicesLoading, backendOnline, toasts,
       maxMediaItems: MAX_MEDIA_ITEMS,
       setIsAdmin,
       addMediaItem, updateMediaItem, deleteMediaItem,

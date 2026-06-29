@@ -128,6 +128,18 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onOpen }) => {
 };
 
 // ─── Gallery Section ──────────────────────────────────────────
+
+// ─── Gallery Skeleton Card ────────────────────────────────────
+const GallerySkeletonCard: React.FC = () => (
+  <div className="bg-royal-900 border border-gold-500/10 rounded-2xl overflow-hidden animate-pulse">
+    <div className="aspect-video bg-royal-950" />
+    <div className="p-4 space-y-2">
+      <div className="h-4 bg-slate-700/50 rounded w-3/4" />
+      <div className="h-3 bg-slate-700/30 rounded w-1/2" />
+    </div>
+  </div>
+);
+
 const GallerySection: React.FC = () => {
   const { mediaItems, isLoading, maxMediaItems } = useMedia();
   const [filter, setFilter] = useState<FilterType>('all');
@@ -200,11 +212,12 @@ const GallerySection: React.FC = () => {
 
         {/* Grid - centered */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-24">
-            <div className="text-center space-y-4">
-              <i className="fas fa-circle-notch animate-spin text-gold-500 text-4xl" />
-              <p className="text-slate-400 text-sm">Loading devotional media...</p>
-            </div>
+          <div className="flex flex-wrap justify-center gap-6">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] xl:w-[calc(25%-18px)]">
+                <GallerySkeletonCard />
+              </div>
+            ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-24 text-slate-500">
