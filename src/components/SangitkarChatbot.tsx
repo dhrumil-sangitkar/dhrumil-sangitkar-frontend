@@ -86,14 +86,14 @@ Common questions: "How can I book an event?", "How do I contact Dhrumil Shah?", 
 
     try {
       const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
-const resp = await fetch(`${apiBase}/chat`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    system,
-    messages: [ ... ],  // keep same messages array as before
-  }),
-});
+      const resp = await fetch(`${apiBase}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system,
+          messages: [...messages, userMsg],
+        }),
+      });
 const data = await resp.json();
 const aiText = data.text || 'Pranam! I could not process that. Please try again.';
       setMessages((prev) => [
