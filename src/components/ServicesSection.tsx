@@ -28,7 +28,7 @@ const ServiceSkeletonCard: React.FC = () => (
 );
 
 const SliderSkeletonCard: React.FC = () => (
-  <div className="flex-shrink-0 w-[280px] sm:w-[320px] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
+  <div className="flex-shrink-0 w-[340px] sm:w-[420px] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
     <div className="w-14 h-14 bg-gold-500/10 rounded-xl mb-6" />
     <div className="h-5 bg-slate-700/50 rounded w-3/5 mb-2" />
     <div className="h-3 bg-slate-700/30 rounded w-2/5 mb-4" />
@@ -202,7 +202,7 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const CARD_WIDTH = 320 + 24; // card width + gap
+  const CARD_WIDTH = 420 + 24;
 
   const scrollToIndex = useCallback((index: number) => {
     if (!trackRef.current) return;
@@ -210,46 +210,43 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
     setActiveIndex(index);
   }, [CARD_WIDTH]);
 
+  const maxIndex = isLoading ? 5 : items.length - 1;
+
   const prev = () => {
-    const newIndex = Math.max(0, activeIndex - 1);
-    scrollToIndex(newIndex);
+    scrollToIndex(activeIndex <= 0 ? maxIndex : activeIndex - 1);
   };
 
   const next = () => {
-    const maxIndex = (isLoading ? 6 : items.length) - 1;
-    const newIndex = Math.min(maxIndex, activeIndex + 1);
-    scrollToIndex(newIndex);
+    scrollToIndex(activeIndex >= maxIndex ? 0 : activeIndex + 1);
   };
 
-  // Auto-play
+  const startAutoPlay = useCallback(() => {
+    if (autoPlayRef.current) clearInterval(autoPlayRef.current);
+    autoPlayRef.current = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = prev >= (items.length - 1) ? 0 : prev + 1;
+        if (trackRef.current) {
+          trackRef.current.scrollTo({ left: next * CARD_WIDTH, behavior: 'smooth' });
+        }
+        return next;
+      });
+    }, 5000);
+  }, [items.length, CARD_WIDTH]);
+
+  const pauseAutoPlay = () => {
+    if (autoPlayRef.current) clearInterval(autoPlayRef.current);
+  };
+
+  const resumeAutoPlay = useCallback(() => {
+    if (isLoading || items.length === 0) return;
+    startAutoPlay();
+  }, [isLoading, items.length, startAutoPlay]);
+
   useEffect(() => {
     if (isLoading || items.length === 0) return;
-    autoPlayRef.current = setInterval(() => {
-      setActiveIndex((prev) => {
-        const next = prev >= items.length - 1 ? 0 : prev + 1;
-        if (trackRef.current) {
-          trackRef.current.scrollTo({ left: next * CARD_WIDTH, behavior: 'smooth' });
-        }
-        return next;
-      });
-    }, 3500);
+    startAutoPlay();
     return () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
-  }, [isLoading, items.length, CARD_WIDTH]);
-
-  // Pause autoplay on hover
-  const pauseAutoPlay = () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
-  const resumeAutoPlay = () => {
-    if (isLoading || items.length === 0) return;
-    autoPlayRef.current = setInterval(() => {
-      setActiveIndex((prev) => {
-        const next = prev >= items.length - 1 ? 0 : prev + 1;
-        if (trackRef.current) {
-          trackRef.current.scrollTo({ left: next * CARD_WIDTH, behavior: 'smooth' });
-        }
-        return next;
-      });
-    }, 3500);
-  };
+  }, [isLoading, items.length, startAutoPlay]);
 
   // Mouse drag
   const onMouseDown = (e: React.MouseEvent) => {
@@ -262,8 +259,7 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
     if (!isDragging || !trackRef.current) return;
     e.preventDefault();
     const x = e.pageX - (trackRef.current.offsetLeft || 0);
-    const walk = (x - startX) * 1.2;
-    trackRef.current.scrollLeft = scrollLeft - walk;
+    trackRef.current.scrollLeft = scrollLeft - (x - startX) * 1.2;
   };
   const onMouseUp = () => {
     setIsDragging(false);
@@ -282,8 +278,7 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
   };
   const onTouchMove = (e: React.TouchEvent) => {
     if (!trackRef.current) return;
-    const walk = (startX - e.touches[0].pageX) * 1.2;
-    trackRef.current.scrollLeft = scrollLeft + walk;
+    trackRef.current.scrollLeft = scrollLeft + (startX - e.touches[0].pageX) * 1.2;
   };
   const onTouchEnd = () => {
     if (trackRef.current) {
@@ -296,7 +291,7 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
   const totalDots = isLoading ? 6 : items.length;
 
   return (
-    <div className="relative" onMouseEnter={pauseAutoPlay} onMouseLeave={resumeAutoPlay}>
+    <div className="relative overflow-hidden" onMouseEnter={pauseAutoPlay} onMouseLeave={resumeAutoPlay}>
       {/* Slider track */}
       <div
         ref={trackRef}
@@ -310,8 +305,8 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        {/* Left padding spacer for centering feel */}
-        <div className="flex-shrink-0 w-[calc(50vw-160px-32px)] hidden md:block" />
+        {/* Left spacer */}
+        <div className="flex-shrink-0 w-[calc(50vw-210px-32px)] hidden md:block" />
 
         {isLoading
           ? Array.from({ length: 6 }).map((_, i) => <SliderSkeletonCard key={i} />)
@@ -320,7 +315,7 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
               key={service.id}
               onClick={() => scrollToIndex(i)}
               style={{ scrollSnapAlign: 'center', flexShrink: 0 }}
-              className={`w-[280px] sm:w-[320px] bg-royal-900 border p-8 rounded-2xl transition-all duration-300 relative group overflow-hidden
+              className={`w-[340px] sm:w-[420px] bg-royal-900 border p-8 rounded-2xl transition-all duration-300 relative group overflow-hidden
                 ${activeIndex === i
                   ? 'border-gold-500/60 shadow-2xl shadow-gold-500/10 scale-[1.02]'
                   : 'border-gold-500/10 opacity-70 hover:opacity-90 hover:border-gold-500/30'}`}
@@ -336,8 +331,8 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
           ))
         }
 
-        {/* Right padding spacer */}
-        <div className="flex-shrink-0 w-[calc(50vw-160px-32px)] hidden md:block" />
+        {/* Right spacer */}
+        <div className="flex-shrink-0 w-[calc(50vw-210px-32px)] hidden md:block" />
       </div>
 
       {/* Hide scrollbar */}
@@ -346,15 +341,13 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
       {/* Nav arrows */}
       <button
         onClick={prev}
-        disabled={activeIndex === 0}
-        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+        className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg"
       >
         <i className="fas fa-chevron-left text-sm" />
       </button>
       <button
         onClick={next}
-        disabled={activeIndex === (isLoading ? 5 : items.length - 1)}
-        className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg"
       >
         <i className="fas fa-chevron-right text-sm" />
       </button>
@@ -426,8 +419,7 @@ const ServicesSection: React.FC = () => {
                     : 'text-slate-400 hover:text-gold-400'
                 }`}
               >
-                <i className="fas fa-layer-group text-[11px]" />
-                Slider
+                <i className="fas fa-layer-group text-[11px]" /> Slider
               </button>
               <button
                 onClick={() => setViewMode('grid')}
@@ -437,8 +429,7 @@ const ServicesSection: React.FC = () => {
                     : 'text-slate-400 hover:text-gold-400'
                 }`}
               >
-                <i className="fas fa-grip text-[11px]" />
-                Grid
+                <i className="fas fa-grip text-[11px]" /> Grid
               </button>
             </div>
           </div>
