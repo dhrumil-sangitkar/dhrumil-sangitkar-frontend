@@ -8,7 +8,6 @@ import GallerySection from './components/GallerySection';
 import ContactSection from './components/ContactSection';
 import Footer from './components/Footer';
 import ToastContainer from './components/ToastContainer';
-import SangitkarChatbot from './components/SangitkarChatbot';
 import AdminPinModal from './components/AdminPinModal';
 
 function AppInner() {
@@ -43,7 +42,6 @@ function AppInner() {
 
       {/* Global UI overlays */}
       <ToastContainer />
-      <SangitkarChatbot />
 
       {/* Session expired — re-prompt PIN */}
       {showSessionExpiredPin && (

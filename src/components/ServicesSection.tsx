@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useMedia } from '../context/MediaContext';
 import { ServiceItem, AdminServiceFormData } from '../types';
 import AdminPinModal from './AdminPinModal';
@@ -13,7 +13,7 @@ const emptyForm: AdminServiceFormData = {
   icon: 'fa-hands-praying', name: '', gujarati: '', desc: '',
 };
 
-// ─── Skeleton card ────────────────────────────────────────────
+// ─── Skeleton card ─────────────────────────────────────────────
 const ServiceSkeletonCard: React.FC = () => (
   <div className="w-full sm:w-[calc(50%-16px)] lg:w-[calc(33.333%-22px)] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
     <div className="w-14 h-14 bg-gold-500/10 rounded-xl mb-6" />
@@ -27,7 +27,20 @@ const ServiceSkeletonCard: React.FC = () => (
   </div>
 );
 
-// ─── Service Admin Modal ──────────────────────────────────────
+const SliderSkeletonCard: React.FC = () => (
+  <div className="flex-shrink-0 w-[280px] sm:w-[320px] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
+    <div className="w-14 h-14 bg-gold-500/10 rounded-xl mb-6" />
+    <div className="h-5 bg-slate-700/50 rounded w-3/5 mb-2" />
+    <div className="h-3 bg-slate-700/30 rounded w-2/5 mb-4" />
+    <div className="space-y-2">
+      <div className="h-3 bg-slate-700/30 rounded w-full" />
+      <div className="h-3 bg-slate-700/30 rounded w-5/6" />
+      <div className="h-3 bg-slate-700/30 rounded w-4/6" />
+    </div>
+  </div>
+);
+
+// ─── Service Admin Modal ───────────────────────────────────────
 interface ServiceAdminModalProps { onClose: () => void; }
 
 const ServiceAdminModal: React.FC<ServiceAdminModalProps> = ({ onClose }) => {
@@ -178,11 +191,204 @@ const ServiceAdminModal: React.FC<ServiceAdminModalProps> = ({ onClose }) => {
   );
 };
 
+// ─── Slider View ───────────────────────────────────────────────
+interface SliderViewProps { items: ServiceItem[]; isLoading: boolean; }
+
+const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const CARD_WIDTH = 320 + 24; // card width + gap
+
+  const scrollToIndex = useCallback((index: number) => {
+    if (!trackRef.current) return;
+    trackRef.current.scrollTo({ left: index * CARD_WIDTH, behavior: 'smooth' });
+    setActiveIndex(index);
+  }, [CARD_WIDTH]);
+
+  const prev = () => {
+    const newIndex = Math.max(0, activeIndex - 1);
+    scrollToIndex(newIndex);
+  };
+
+  const next = () => {
+    const maxIndex = (isLoading ? 6 : items.length) - 1;
+    const newIndex = Math.min(maxIndex, activeIndex + 1);
+    scrollToIndex(newIndex);
+  };
+
+  // Auto-play
+  useEffect(() => {
+    if (isLoading || items.length === 0) return;
+    autoPlayRef.current = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = prev >= items.length - 1 ? 0 : prev + 1;
+        if (trackRef.current) {
+          trackRef.current.scrollTo({ left: next * CARD_WIDTH, behavior: 'smooth' });
+        }
+        return next;
+      });
+    }, 3500);
+    return () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
+  }, [isLoading, items.length, CARD_WIDTH]);
+
+  // Pause autoplay on hover
+  const pauseAutoPlay = () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
+  const resumeAutoPlay = () => {
+    if (isLoading || items.length === 0) return;
+    autoPlayRef.current = setInterval(() => {
+      setActiveIndex((prev) => {
+        const next = prev >= items.length - 1 ? 0 : prev + 1;
+        if (trackRef.current) {
+          trackRef.current.scrollTo({ left: next * CARD_WIDTH, behavior: 'smooth' });
+        }
+        return next;
+      });
+    }, 3500);
+  };
+
+  // Mouse drag
+  const onMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setStartX(e.pageX - (trackRef.current?.offsetLeft || 0));
+    setScrollLeft(trackRef.current?.scrollLeft || 0);
+    pauseAutoPlay();
+  };
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !trackRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - (trackRef.current.offsetLeft || 0);
+    const walk = (x - startX) * 1.2;
+    trackRef.current.scrollLeft = scrollLeft - walk;
+  };
+  const onMouseUp = () => {
+    setIsDragging(false);
+    if (trackRef.current) {
+      const idx = Math.round(trackRef.current.scrollLeft / CARD_WIDTH);
+      setActiveIndex(Math.max(0, Math.min(idx, items.length - 1)));
+    }
+    resumeAutoPlay();
+  };
+
+  // Touch
+  const onTouchStart = (e: React.TouchEvent) => {
+    setStartX(e.touches[0].pageX);
+    setScrollLeft(trackRef.current?.scrollLeft || 0);
+    pauseAutoPlay();
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!trackRef.current) return;
+    const walk = (startX - e.touches[0].pageX) * 1.2;
+    trackRef.current.scrollLeft = scrollLeft + walk;
+  };
+  const onTouchEnd = () => {
+    if (trackRef.current) {
+      const idx = Math.round(trackRef.current.scrollLeft / CARD_WIDTH);
+      setActiveIndex(Math.max(0, Math.min(idx, items.length - 1)));
+    }
+    resumeAutoPlay();
+  };
+
+  const totalDots = isLoading ? 6 : items.length;
+
+  return (
+    <div className="relative" onMouseEnter={pauseAutoPlay} onMouseLeave={resumeAutoPlay}>
+      {/* Slider track */}
+      <div
+        ref={trackRef}
+        className="flex gap-6 overflow-x-auto pb-4 select-none cursor-grab active:cursor-grabbing"
+        style={{ scrollSnapType: 'x mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+      >
+        {/* Left padding spacer for centering feel */}
+        <div className="flex-shrink-0 w-[calc(50vw-160px-32px)] hidden md:block" />
+
+        {isLoading
+          ? Array.from({ length: 6 }).map((_, i) => <SliderSkeletonCard key={i} />)
+          : items.map((service, i) => (
+            <div
+              key={service.id}
+              onClick={() => scrollToIndex(i)}
+              style={{ scrollSnapAlign: 'center', flexShrink: 0 }}
+              className={`w-[280px] sm:w-[320px] bg-royal-900 border p-8 rounded-2xl transition-all duration-300 relative group overflow-hidden
+                ${activeIndex === i
+                  ? 'border-gold-500/60 shadow-2xl shadow-gold-500/10 scale-[1.02]'
+                  : 'border-gold-500/10 opacity-70 hover:opacity-90 hover:border-gold-500/30'}`}
+            >
+              <div className="absolute -top-10 -right-10 w-24 h-24 bg-gold-500/5 rounded-full group-hover:bg-gold-500/10 transition-colors" />
+              <div className="w-14 h-14 bg-gold-500/10 rounded-xl flex items-center justify-center text-gold-500 text-2xl mb-6 border border-gold-500/20">
+                <i className={`fas ${service.icon}`} />
+              </div>
+              <h3 className="font-cinzel text-xl font-bold text-gold-400 mb-1">{service.name}</h3>
+              <h4 className="text-xs font-semibold text-slate-300 mb-3 tracking-widest uppercase">{service.gujarati}</h4>
+              <p className="text-slate-400 text-sm leading-relaxed">{service.desc}</p>
+            </div>
+          ))
+        }
+
+        {/* Right padding spacer */}
+        <div className="flex-shrink-0 w-[calc(50vw-160px-32px)] hidden md:block" />
+      </div>
+
+      {/* Hide scrollbar */}
+      <style>{`div::-webkit-scrollbar { display: none; }`}</style>
+
+      {/* Nav arrows */}
+      <button
+        onClick={prev}
+        disabled={activeIndex === 0}
+        className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <i className="fas fa-chevron-left text-sm" />
+      </button>
+      <button
+        onClick={next}
+        disabled={activeIndex === (isLoading ? 5 : items.length - 1)}
+        className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg disabled:opacity-30 disabled:cursor-not-allowed"
+      >
+        <i className="fas fa-chevron-right text-sm" />
+      </button>
+
+      {/* Dot indicators */}
+      <div className="flex justify-center gap-2 mt-6">
+        {Array.from({ length: totalDots }).map((_, i) => (
+          <button
+            key={i}
+            onClick={() => scrollToIndex(i)}
+            className={`transition-all duration-300 rounded-full
+              ${activeIndex === i
+                ? 'w-6 h-2 bg-gold-500'
+                : 'w-2 h-2 bg-gold-500/30 hover:bg-gold-500/60'}`}
+          />
+        ))}
+      </div>
+
+      {/* Counter */}
+      {!isLoading && items.length > 0 && (
+        <p className="text-center text-xs text-slate-500 mt-3 font-cinzel tracking-widest">
+          {activeIndex + 1} / {items.length}
+        </p>
+      )}
+    </div>
+  );
+};
+
 // ─── Services Section (Public) ────────────────────────────────
 const ServicesSection: React.FC = () => {
   const { serviceItems, isServicesLoading, isAdmin, setIsAdmin } = useMedia();
   const [showPinModal, setShowPinModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [viewMode, setViewMode] = useState<'slider' | 'grid'>('slider');
 
   const handleAdminClick = () => {
     if (isAdmin) setShowAdminModal(true);
@@ -193,6 +399,7 @@ const ServicesSection: React.FC = () => {
   return (
     <section id="services" className="py-24 px-4">
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
         <div className="text-center mb-16">
           <div className="flex items-center justify-center gap-3 mb-3">
             <span className="text-xs text-gold-500 font-bold uppercase tracking-widest bg-gold-500/10 px-3 py-1 rounded-full border border-gold-500/20">
@@ -207,26 +414,57 @@ const ServicesSection: React.FC = () => {
           <p className="text-slate-400 max-w-xl mx-auto mt-4 text-sm md:text-base">
             We curate spiritually elevating, beautiful, and authentic musical orchestrations for all sacred celebrations.
           </p>
+
+          {/* View toggle */}
+          <div className="flex items-center justify-center gap-1 mt-6">
+            <div className="flex bg-royal-900 border border-gold-500/20 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setViewMode('slider')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${
+                  viewMode === 'slider'
+                    ? 'bg-gold-500 text-royal-950 shadow-md'
+                    : 'text-slate-400 hover:text-gold-400'
+                }`}
+              >
+                <i className="fas fa-layer-group text-[11px]" />
+                Slider
+              </button>
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${
+                  viewMode === 'grid'
+                    ? 'bg-gold-500 text-royal-950 shadow-md'
+                    : 'text-slate-400 hover:text-gold-400'
+                }`}
+              >
+                <i className="fas fa-grip text-[11px]" />
+                Grid
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-8">
-          {isServicesLoading ? (
-            // ── Skeleton: 6 placeholder cards ──
-            Array.from({ length: 6 }).map((_, i) => <ServiceSkeletonCard key={i} />)
-          ) : (
-            serviceItems.map((service) => (
-              <div key={service.id} className="w-full sm:w-[calc(50%-16px)] lg:w-[calc(33.333%-22px)] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl hover:border-gold-500/50 hover:shadow-2xl hover:shadow-gold-500/5 transition-all duration-300 relative group overflow-hidden">
-                <div className="absolute -top-10 -right-10 w-24 h-24 bg-gold-500/5 rounded-full group-hover:bg-gold-500/10 transition-colors" />
-                <div className="w-14 h-14 bg-gold-500/10 rounded-xl flex items-center justify-center text-gold-500 text-2xl mb-6 border border-gold-500/20">
-                  <i className={`fas ${service.icon}`} />
+        {/* Content */}
+        {viewMode === 'slider' ? (
+          <SliderView items={serviceItems} isLoading={isServicesLoading} />
+        ) : (
+          <div className="flex flex-wrap justify-center gap-8">
+            {isServicesLoading
+              ? Array.from({ length: 6 }).map((_, i) => <ServiceSkeletonCard key={i} />)
+              : serviceItems.map((service) => (
+                <div key={service.id} className="w-full sm:w-[calc(50%-16px)] lg:w-[calc(33.333%-22px)] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl hover:border-gold-500/50 hover:shadow-2xl hover:shadow-gold-500/5 transition-all duration-300 relative group overflow-hidden">
+                  <div className="absolute -top-10 -right-10 w-24 h-24 bg-gold-500/5 rounded-full group-hover:bg-gold-500/10 transition-colors" />
+                  <div className="w-14 h-14 bg-gold-500/10 rounded-xl flex items-center justify-center text-gold-500 text-2xl mb-6 border border-gold-500/20">
+                    <i className={`fas ${service.icon}`} />
+                  </div>
+                  <h3 className="font-cinzel text-xl font-bold text-gold-400 mb-1">{service.name}</h3>
+                  <h4 className="text-xs font-semibold text-slate-300 mb-3 tracking-widest uppercase">{service.gujarati}</h4>
+                  <p className="text-slate-400 text-sm leading-relaxed">{service.desc}</p>
                 </div>
-                <h3 className="font-cinzel text-xl font-bold text-gold-400 mb-1">{service.name}</h3>
-                <h4 className="text-xs font-semibold text-slate-300 mb-3 tracking-widest uppercase">{service.gujarati}</h4>
-                <p className="text-slate-400 text-sm leading-relaxed">{service.desc}</p>
-              </div>
-            ))
-          )}
-        </div>
+              ))
+            }
+          </div>
+        )}
       </div>
 
       {showPinModal && <AdminPinModal onClose={() => setShowPinModal(false)} onSuccess={handlePinSuccess} />}
