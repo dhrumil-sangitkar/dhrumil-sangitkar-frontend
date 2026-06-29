@@ -90,8 +90,13 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
       setMediaItems((prev) => [created, ...prev]);
       showToast('Media added successfully!');
     } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      showToast(msg || 'Failed to add media. Please try again.', 'error');
+      if (status === 413) {
+        showToast('Those photos are too large together. Try uploading fewer at once.', 'error');
+      } else {
+        showToast(msg || 'Failed to add media. Please try again.', 'error');
+      }
       throw err;
     }
   };
@@ -102,8 +107,13 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
       setMediaItems((prev) => prev.map((m) => (m.id === id ? updated : m)));
       showToast('Media updated successfully!');
     } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      showToast(msg || 'Failed to update media. Please try again.', 'error');
+      if (status === 413) {
+        showToast('Those photos are too large together. Try uploading fewer at once.', 'error');
+      } else {
+        showToast(msg || 'Failed to update media. Please try again.', 'error');
+      }
       throw err;
     }
   };

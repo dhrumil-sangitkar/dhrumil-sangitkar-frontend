@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useMedia } from '../context/MediaContext';
 import { MediaItem, AdminMediaFormData } from '../types';
+import { compressImageFiles } from '../utils/compressImage';
 
 interface Props {
   onClose: () => void;
@@ -24,6 +25,7 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
   const [isEditing, setIsEditing] = useState(false);
   const [filePreview, setFilePreview] = useState('');
   const [filePreviews, setFilePreviews] = useState<string[]>([]);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -60,19 +62,17 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
 
     if (form.type === 'file_image') {
       const fileArray = Array.from(files);
-      const readers = fileArray.map(
-        (file) =>
-          new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          })
-      );
-      Promise.all(readers).then((results) => {
-        setForm((f) => ({ ...f, url: results[0], images: results }));
-        setFilePreviews(results);
-        setFilePreview(results[0]);
-      });
+      setIsCompressing(true);
+      compressImageFiles(fileArray)
+        .then((results) => {
+          setForm((f) => ({ ...f, url: results[0], images: results }));
+          setFilePreviews(results);
+          setFilePreview(results[0]);
+        })
+        .catch(() => {
+          showToast('One or more images could not be processed. Try a different photo.', 'error');
+        })
+        .finally(() => setIsCompressing(false));
     } else {
       const file = files[0];
       const reader = new FileReader();
@@ -314,8 +314,19 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                       accept={form.type === 'file_image' ? 'image/*' : 'video/*'}
                       multiple={form.type === 'file_image'}
                       onChange={handleFileChange}
-                      className="w-full bg-royal-900 border border-gold-500/20 rounded-lg px-3 py-2 text-slate-200 text-sm"
+                      disabled={isCompressing}
+                      className="w-full bg-royal-900 border border-gold-500/20 rounded-lg px-3 py-2 text-slate-200 text-sm disabled:opacity-60"
                     />
+                    {form.type === 'file_image' && (
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Select multiple photos to create a swipeable slider. The first one becomes the cover image.
+                      </p>
+                    )}
+                    {isCompressing && (
+                      <p className="text-[10px] text-gold-400 mt-1 flex items-center gap-1.5">
+                        <i className="fas fa-circle-notch animate-spin" /> Processing images...
+                      </p>
+                    )}
                     {form.type === 'file_image' && filePreviews.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {filePreviews.map((src, idx) => (
@@ -391,7 +402,7 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                   </button>
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || isCompressing}
                     className="px-5 py-2 bg-gold-500 hover:bg-gold-600 text-royal-950 rounded-lg text-xs font-bold transition shadow-md disabled:opacity-60 flex items-center gap-2"
                   >
                     {saving && <i className="fas fa-circle-notch animate-spin" />}

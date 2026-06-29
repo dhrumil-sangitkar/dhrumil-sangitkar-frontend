@@ -66,15 +66,15 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={`relative ${isInstagram ? 'max-w-sm' : 'max-w-4xl'} w-full`}>
+      <div className={`relative ${isInstagram ? 'max-w-sm' : 'max-w-4xl'} w-full my-auto`}>
 
         {/* ── Close Button — always visible, top-right inside the modal ── */}
         <button
           onClick={onClose}
-          className="absolute -top-4 -right-4 z-10 w-10 h-10 rounded-full bg-gold-500 hover:bg-gold-400 text-royal-950 flex items-center justify-center shadow-xl transition-all duration-200 hover:scale-110"
+          className="absolute -top-3 -right-3 sm:-top-4 sm:-right-4 z-10 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gold-500 hover:bg-gold-400 text-royal-950 flex items-center justify-center shadow-xl transition-all duration-200 hover:scale-110"
           title="Close"
         >
           <i className="fas fa-times text-base font-bold" />
@@ -83,11 +83,11 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
         {/* ── Media Content ── */}
         {isInstagram ? (
           /* Instagram: portrait embed */
-          <div className="rounded-xl overflow-hidden shadow-2xl border border-gold-500/20 bg-royal-950" style={{ minHeight: 520 }}>
+          <div className="rounded-xl overflow-hidden shadow-2xl border border-gold-500/20 bg-royal-950" style={{ height: 'min(75vh, 600px)', minHeight: 320 }}>
             <iframe
               src={getInstagramEmbedUrl(item.url)}
-              className="w-full"
-              style={{ height: 520, border: 'none' }}
+              className="w-full h-full"
+              style={{ border: 'none' }}
               allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
               allowFullScreen
               scrolling="no"
@@ -95,9 +95,10 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
             />
           </div>
         ) : isImage && hasMultiple ? (
-          /* Swipeable multi-photo carousel */
+          /* Swipeable multi-photo carousel — height adapts to the photo, capped to viewport */
           <div
-            className="relative w-full aspect-video rounded-xl overflow-hidden shadow-2xl border border-gold-500/20 bg-royal-950 select-none"
+            className="relative w-full rounded-xl overflow-hidden shadow-2xl border border-gold-500/20 bg-royal-950 select-none"
+            style={{ height: 'min(65vh, 600px)' }}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
@@ -108,7 +109,7 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
             >
               {photos.map((src, idx) => (
                 <div key={idx} className="w-full h-full shrink-0 flex items-center justify-center">
-                  <img src={src} alt={`${item.title} ${idx + 1}`} className="w-full h-full object-contain" draggable={false} />
+                  <img src={src} alt={`${item.title} ${idx + 1}`} className="max-w-full max-h-full w-auto h-auto object-contain" draggable={false} />
                 </div>
               ))}
             </div>
@@ -116,14 +117,14 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
             {/* Prev/Next arrows */}
             <button
               onClick={(e) => { e.stopPropagation(); goPrev(); }}
-              className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-all"
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-all"
               title="Previous photo"
             >
               <i className="fas fa-chevron-left text-sm" />
             </button>
             <button
               onClick={(e) => { e.stopPropagation(); goNext(); }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-all"
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center transition-all"
               title="Next photo"
             >
               <i className="fas fa-chevron-right text-sm" />
@@ -135,19 +136,22 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
             </div>
 
             {/* Dot indicators */}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 max-w-[80%] overflow-x-auto px-1">
               {photos.map((_, idx) => (
                 <button
                   key={idx}
                   onClick={(e) => { e.stopPropagation(); setActiveIndex(idx); }}
-                  className={`w-2 h-2 rounded-full transition-all ${idx === activeIndex ? 'bg-gold-500 w-4' : 'bg-white/40 hover:bg-white/70'}`}
+                  className={`shrink-0 w-2 h-2 rounded-full transition-all ${idx === activeIndex ? 'bg-gold-500 w-4' : 'bg-white/40 hover:bg-white/70'}`}
                   title={`Go to photo ${idx + 1}`}
                 />
               ))}
             </div>
           </div>
         ) : (
-          <div className="w-full aspect-video rounded-xl overflow-hidden shadow-2xl border border-gold-500/20 bg-royal-950">
+          <div
+            className={`w-full rounded-xl overflow-hidden shadow-2xl border border-gold-500/20 bg-royal-950 ${isImage ? '' : 'aspect-video'}`}
+            style={isImage ? { height: 'min(65vh, 600px)' } : undefined}
+          >
             {isImage && (
               <img src={item.url} alt={item.title} className="w-full h-full object-contain" />
             )}
