@@ -234,13 +234,14 @@ const ContactSection: React.FC = () => {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-4 bg-gradient-to-r from-gold-600 to-gold-400 text-royal-950 font-bold uppercase tracking-wider rounded-lg shadow-xl hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2 disabled:opacity-70"
+              className="w-full py-4 px-4 bg-gradient-to-r from-gold-600 to-gold-400 text-royal-950 font-bold uppercase tracking-wider rounded-lg shadow-xl hover:opacity-90 active:scale-95 transition flex items-center justify-center gap-2 text-center disabled:opacity-70"
             >
               {submitting ? (
                 <i className="fas fa-circle-notch animate-spin" />
               ) : (
                 <>
-                  <i className="fab fa-whatsapp text-lg" /> Send Booking Details via WhatsApp
+                  <i className="fab fa-whatsapp text-lg shrink-0" />
+                  <span className="leading-tight text-xs sm:text-sm">Send Booking Details via WhatsApp</span>
                 </>
               )}
             </button>

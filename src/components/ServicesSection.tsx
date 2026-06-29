@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useMedia } from '../context/MediaContext';
 import { ServiceItem, AdminServiceFormData } from '../types';
 import AdminPinModal from './AdminPinModal';
@@ -16,19 +16,6 @@ const emptyForm: AdminServiceFormData = {
 // ─── Skeleton card ─────────────────────────────────────────────
 const ServiceSkeletonCard: React.FC = () => (
   <div className="w-full sm:w-[calc(50%-16px)] lg:w-[calc(33.333%-22px)] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
-    <div className="w-14 h-14 bg-gold-500/10 rounded-xl mb-6" />
-    <div className="h-5 bg-slate-700/50 rounded w-3/5 mb-2" />
-    <div className="h-3 bg-slate-700/30 rounded w-2/5 mb-4" />
-    <div className="space-y-2">
-      <div className="h-3 bg-slate-700/30 rounded w-full" />
-      <div className="h-3 bg-slate-700/30 rounded w-5/6" />
-      <div className="h-3 bg-slate-700/30 rounded w-4/6" />
-    </div>
-  </div>
-);
-
-const SliderSkeletonCard: React.FC = () => (
-  <div className="flex-shrink-0 w-[340px] sm:w-[420px] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
     <div className="w-14 h-14 bg-gold-500/10 rounded-xl mb-6" />
     <div className="h-5 bg-slate-700/50 rounded w-3/5 mb-2" />
     <div className="h-3 bg-slate-700/30 rounded w-2/5 mb-4" />
@@ -70,13 +57,13 @@ const ServiceAdminModal: React.FC<ServiceAdminModalProps> = ({ onClose }) => {
         await addServiceItem({ icon: form.icon, name: form.name, gujarati: form.gujarati, desc: form.desc });
       }
       setShowForm(false); setForm(emptyForm);
-    } catch { /* error toast shown by context */ } finally { setSaving(false); }
+    } catch { } finally { setSaving(false); }
   };
 
   const handleDelete = async (id: string) => {
     setDeleting(id);
     try { await deleteServiceItem(id); setConfirmDelete(null); }
-    catch { /* error toast shown */ } finally { setDeleting(null); }
+    catch { } finally { setDeleting(null); }
   };
 
   const autoFill = async () => {
@@ -191,134 +178,202 @@ const ServiceAdminModal: React.FC<ServiceAdminModalProps> = ({ onClose }) => {
   );
 };
 
-// ─── Slider View ───────────────────────────────────────────────
+// ─── Infinite Slider View ──────────────────────────────────────
 interface SliderViewProps { items: ServiceItem[]; isLoading: boolean; }
 
 const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
+  const count = items.length;
+  const tripled = count > 0 ? [...items, ...items, ...items] : [];
+
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
+  const tripledIndexRef = useRef(count);
   const trackRef = useRef<HTMLDivElement>(null);
-  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isAnimating = useRef(false);
+  const GAP = 24;
 
-  const CARD_WIDTH = 420 + 24;
+  // ── Get actual rendered card width ──
+  const getCardWidth = useCallback((): number => {
+    const card = trackRef.current?.querySelector('[data-card]') as HTMLElement | null;
+    return card ? card.offsetWidth + GAP : 444;
+  }, []);
 
-  const scrollToIndex = useCallback((index: number) => {
+  // ── Scroll so that tripledIdx card is perfectly centred ──
+  const getScrollForIndex = useCallback((tripledIdx: number): number => {
+    if (!trackRef.current) return 0;
+    const cw = getCardWidth();
+    const trackW = trackRef.current.clientWidth;
+    const cardOnlyW = cw - GAP;
+    // Each card starts at: tripledIdx * cw  (left edge of card)
+    // We want card centre = trackW / 2
+    return tripledIdx * cw + cardOnlyW / 2 - trackW / 2;
+  }, [getCardWidth]);
+
+  const jumpTo = useCallback((tripledIdx: number) => {
     if (!trackRef.current) return;
-    trackRef.current.scrollTo({ left: index * CARD_WIDTH, behavior: 'smooth' });
-    setActiveIndex(index);
-  }, [CARD_WIDTH]);
+    trackRef.current.scrollLeft = getScrollForIndex(tripledIdx);
+  }, [getScrollForIndex]);
 
-  const maxIndex = isLoading ? 5 : items.length - 1;
+  const smoothTo = useCallback((tripledIdx: number) => {
+    if (!trackRef.current) return;
+    trackRef.current.scrollTo({ left: getScrollForIndex(tripledIdx), behavior: 'smooth' });
+  }, [getScrollForIndex]);
 
-  const prev = () => {
-    scrollToIndex(activeIndex <= 0 ? maxIndex : activeIndex - 1);
-  };
-
-  const next = () => {
-    scrollToIndex(activeIndex >= maxIndex ? 0 : activeIndex + 1);
-  };
-
-  const startAutoPlay = useCallback(() => {
-    if (autoPlayRef.current) clearInterval(autoPlayRef.current);
-    autoPlayRef.current = setInterval(() => {
-      setActiveIndex((prev) => {
-        const next = prev >= (items.length - 1) ? 0 : prev + 1;
-        if (trackRef.current) {
-          trackRef.current.scrollTo({ left: next * CARD_WIDTH, behavior: 'smooth' });
-        }
-        return next;
-      });
-    }, 5000);
-  }, [items.length, CARD_WIDTH]);
-
-  const pauseAutoPlay = () => {
-    if (autoPlayRef.current) clearInterval(autoPlayRef.current);
-  };
-
-  const resumeAutoPlay = useCallback(() => {
-    if (isLoading || items.length === 0) return;
-    startAutoPlay();
-  }, [isLoading, items.length, startAutoPlay]);
-
+  // ── On mount / data ready: start in middle copy ──
   useEffect(() => {
-    if (isLoading || items.length === 0) return;
-    startAutoPlay();
-    return () => { if (autoPlayRef.current) clearInterval(autoPlayRef.current); };
-  }, [isLoading, items.length, startAutoPlay]);
+    if (isLoading || count === 0) return;
+    tripledIndexRef.current = count;
+    // Wait one frame for cards to render and get real widths
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        jumpTo(count);
+      });
+    });
+  }, [isLoading, count, jumpTo]);
 
-  // Mouse drag
+  // ── Re-centre on window resize ──
+  useEffect(() => {
+    const onResize = () => jumpTo(tripledIndexRef.current);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [jumpTo]);
+
+  const navigate = useCallback((direction: 1 | -1) => {
+    if (count === 0 || isAnimating.current) return;
+    isAnimating.current = true;
+
+    const next = tripledIndexRef.current + direction;
+    tripledIndexRef.current = next;
+
+    setActiveIndex((prev) => (prev + direction + count) % count);
+    smoothTo(next);
+
+    // After animation, silently jump back to middle copy
+    setTimeout(() => {
+      const mod = ((next % count) + count) % count;
+      const middle = mod + count;
+      if (next !== middle) {
+        tripledIndexRef.current = middle;
+        jumpTo(middle);
+      }
+      isAnimating.current = false;
+    }, 420);
+  }, [count, smoothTo, jumpTo]);
+
+  const goToIndex = useCallback((i: number) => {
+    if (count === 0) return;
+    const target = count + i;
+    tripledIndexRef.current = target;
+    setActiveIndex(i);
+    smoothTo(target);
+    setTimeout(() => { isAnimating.current = false; }, 420);
+  }, [count, smoothTo]);
+
+  // ── Drag / swipe ──
+  const drag = useRef({ active: false, startX: 0, startScroll: 0 });
+
   const onMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setStartX(e.pageX - (trackRef.current?.offsetLeft || 0));
-    setScrollLeft(trackRef.current?.scrollLeft || 0);
-    pauseAutoPlay();
+    drag.current = { active: true, startX: e.pageX, startScroll: trackRef.current?.scrollLeft ?? 0 };
   };
   const onMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging || !trackRef.current) return;
+    if (!drag.current.active || !trackRef.current) return;
     e.preventDefault();
-    const x = e.pageX - (trackRef.current.offsetLeft || 0);
-    trackRef.current.scrollLeft = scrollLeft - (x - startX) * 1.2;
+    trackRef.current.scrollLeft = drag.current.startScroll - (e.pageX - drag.current.startX);
   };
-  const onMouseUp = () => {
-    setIsDragging(false);
-    if (trackRef.current) {
-      const idx = Math.round(trackRef.current.scrollLeft / CARD_WIDTH);
-      setActiveIndex(Math.max(0, Math.min(idx, items.length - 1)));
-    }
-    resumeAutoPlay();
+  const onMouseUp = (e: React.MouseEvent) => {
+    if (!drag.current.active) return;
+    const diff = drag.current.startScroll - (e.pageX - drag.current.startX) - drag.current.startScroll;
+    drag.current.active = false;
+    if (Math.abs(e.pageX - drag.current.startX) > 50) navigate(e.pageX - drag.current.startX < 0 ? 1 : -1);
+    else jumpTo(tripledIndexRef.current);
   };
 
-  // Touch
+  const touchStart = useRef({ x: 0, scroll: 0 });
   const onTouchStart = (e: React.TouchEvent) => {
-    setStartX(e.touches[0].pageX);
-    setScrollLeft(trackRef.current?.scrollLeft || 0);
-    pauseAutoPlay();
+    touchStart.current = { x: e.touches[0].pageX, scroll: trackRef.current?.scrollLeft ?? 0 };
   };
   const onTouchMove = (e: React.TouchEvent) => {
     if (!trackRef.current) return;
-    trackRef.current.scrollLeft = scrollLeft + (startX - e.touches[0].pageX) * 1.2;
+    trackRef.current.scrollLeft = touchStart.current.scroll - (e.touches[0].pageX - touchStart.current.x);
   };
-  const onTouchEnd = () => {
-    if (trackRef.current) {
-      const idx = Math.round(trackRef.current.scrollLeft / CARD_WIDTH);
-      setActiveIndex(Math.max(0, Math.min(idx, items.length - 1)));
-    }
-    resumeAutoPlay();
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const diff = e.changedTouches[0].pageX - touchStart.current.x;
+    if (Math.abs(diff) > 50) navigate(diff < 0 ? 1 : -1);
+    else jumpTo(tripledIndexRef.current);
   };
 
-  const totalDots = isLoading ? 6 : items.length;
+  if (isLoading) {
+    return (
+      <div className="flex gap-6 justify-center overflow-hidden px-4 py-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="flex-shrink-0 w-[85vw] sm:w-[400px] lg:w-[460px] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl animate-pulse">
+            <div className="w-14 h-14 bg-gold-500/10 rounded-xl mb-6" />
+            <div className="h-5 bg-slate-700/50 rounded w-3/5 mb-2" />
+            <div className="h-3 bg-slate-700/30 rounded w-2/5 mb-4" />
+            <div className="space-y-2">
+              <div className="h-3 bg-slate-700/30 rounded w-full" />
+              <div className="h-3 bg-slate-700/30 rounded w-5/6" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="relative overflow-hidden" onMouseEnter={pauseAutoPlay} onMouseLeave={resumeAutoPlay}>
-      {/* Slider track */}
+    <div className="relative pt-4 pb-3 px-1">
+
+      {/* Left fade — starts below the top so border is never covered */}
+      <div
+        className="absolute left-0 z-10 pointer-events-none w-10 sm:w-20"
+        style={{
+          top: '16px',
+          bottom: '16px',
+          background: 'linear-gradient(to right, #0a0f1e 40%, transparent)',
+        }}
+      />
+      {/* Right fade */}
+      <div
+        className="absolute right-0 z-10 pointer-events-none w-10 sm:w-20"
+        style={{
+          top: '16px',
+          bottom: '16px',
+          background: 'linear-gradient(to left, #0a0f1e 40%, transparent)',
+        }}
+      />
+
+      {/* Track — overflow-x hidden so no scrollbar, but we control scrollLeft manually */}
       <div
         ref={trackRef}
-        className="flex gap-6 overflow-x-auto pb-4 select-none cursor-grab active:cursor-grabbing"
-        style={{ scrollSnapType: 'x mandatory', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        className="flex pt-2 pb-4 select-none cursor-grab active:cursor-grabbing"
+        style={{
+          gap: `${GAP}px`,
+          overflowX: 'hidden',
+          scrollbarWidth: 'none',
+        }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
+        onMouseLeave={() => { drag.current.active = false; jumpTo(tripledIndexRef.current); }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        {/* Left spacer */}
-        <div className="flex-shrink-0 w-[calc(50vw-210px-32px)] hidden md:block" />
+        {tripled.map((service, i) => {
+          const originalIdx = i % count;
+          const isActive = i === tripledIndexRef.current;
 
-        {isLoading
-          ? Array.from({ length: 6 }).map((_, i) => <SliderSkeletonCard key={i} />)
-          : items.map((service, i) => (
+          return (
             <div
-              key={service.id}
-              onClick={() => scrollToIndex(i)}
-              style={{ scrollSnapAlign: 'center', flexShrink: 0 }}
-              className={`w-[340px] sm:w-[420px] bg-royal-900 border p-8 rounded-2xl transition-all duration-300 relative group overflow-hidden
-                ${activeIndex === i
+              key={`${service.id}-${i}`}
+              data-card
+              onClick={() => goToIndex(originalIdx)}
+              className={`flex-shrink-0 w-[85vw] sm:w-[400px] lg:w-[460px] xl:w-[500px]
+                bg-royal-900 border p-6 sm:p-8 rounded-2xl
+                transition-all duration-300 relative group overflow-hidden
+                ${isActive
                   ? 'border-gold-500/60 shadow-2xl shadow-gold-500/10 scale-[1.02]'
-                  : 'border-gold-500/10 opacity-70 hover:opacity-90 hover:border-gold-500/30'}`}
+                  : 'border-gold-500/10 opacity-60 hover:opacity-80 hover:border-gold-500/30'
+                }`}
             >
               <div className="absolute -top-10 -right-10 w-24 h-24 bg-gold-500/5 rounded-full group-hover:bg-gold-500/10 transition-colors" />
               <div className="w-14 h-14 bg-gold-500/10 rounded-xl flex items-center justify-center text-gold-500 text-2xl mb-6 border border-gold-500/20">
@@ -328,48 +383,41 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
               <h4 className="text-xs font-semibold text-slate-300 mb-3 tracking-widest uppercase">{service.gujarati}</h4>
               <p className="text-slate-400 text-sm leading-relaxed">{service.desc}</p>
             </div>
-          ))
-        }
-
-        {/* Right spacer */}
-        <div className="flex-shrink-0 w-[calc(50vw-210px-32px)] hidden md:block" />
+          );
+        })}
       </div>
 
-      {/* Hide scrollbar */}
-      <style>{`div::-webkit-scrollbar { display: none; }`}</style>
-
-      {/* Nav arrows */}
+      {/* Arrows — above the fade masks */}
       <button
-        onClick={prev}
-        className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg"
+        onClick={() => navigate(-1)}
+        className="absolute left-1 sm:left-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 transition-all duration-300 shadow-lg"
       >
-        <i className="fas fa-chevron-left text-sm" />
+        <i className="fas fa-chevron-left text-xs sm:text-sm" />
       </button>
       <button
-        onClick={next}
-        className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-lg"
+        onClick={() => navigate(1)}
+        className="absolute right-1 sm:right-4 top-1/2 -translate-y-1/2 z-20 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 transition-all duration-300 shadow-lg"
       >
-        <i className="fas fa-chevron-right text-sm" />
+        <i className="fas fa-chevron-right text-xs sm:text-sm" />
       </button>
 
-      {/* Dot indicators */}
+      {/* Dots */}
       <div className="flex justify-center gap-2 mt-6">
-        {Array.from({ length: totalDots }).map((_, i) => (
+        {items.map((_, i) => (
           <button
             key={i}
-            onClick={() => scrollToIndex(i)}
-            className={`transition-all duration-300 rounded-full
-              ${activeIndex === i
-                ? 'w-6 h-2 bg-gold-500'
-                : 'w-2 h-2 bg-gold-500/30 hover:bg-gold-500/60'}`}
+            onClick={() => goToIndex(i)}
+            className={`transition-all duration-300 rounded-full ${
+              activeIndex === i ? 'w-6 h-2 bg-gold-500' : 'w-2 h-2 bg-gold-500/30 hover:bg-gold-500/60'
+            }`}
           />
         ))}
       </div>
 
       {/* Counter */}
-      {!isLoading && items.length > 0 && (
+      {count > 0 && (
         <p className="text-center text-xs text-slate-500 mt-3 font-cinzel tracking-widest">
-          {activeIndex + 1} / {items.length}
+          {activeIndex + 1} / {count}
         </p>
       )}
     </div>
@@ -378,7 +426,7 @@ const SliderView: React.FC<SliderViewProps> = ({ items, isLoading }) => {
 
 // ─── Services Section (Public) ────────────────────────────────
 const ServicesSection: React.FC = () => {
-  const { serviceItems, isServicesLoading, isAdmin, setIsAdmin } = useMedia();
+  const { serviceItems, isServicesLoading, isAdmin } = useMedia();
   const [showPinModal, setShowPinModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [viewMode, setViewMode] = useState<'slider' | 'grid'>('slider');
@@ -392,31 +440,37 @@ const ServicesSection: React.FC = () => {
   return (
     <section id="services" className="py-24 px-4">
       <div className="max-w-7xl mx-auto">
+
         {/* Header */}
         <div className="text-center mb-16">
           <div className="flex items-center justify-center gap-3 mb-3">
             <span className="text-xs text-gold-500 font-bold uppercase tracking-widest bg-gold-500/10 px-3 py-1 rounded-full border border-gold-500/20">
               Spiritual Offerings • અમારી સેવાઓ
             </span>
-            <button onClick={handleAdminClick} className="w-8 h-8 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-md" title="Manage Services">
+            <button
+              onClick={handleAdminClick}
+              className="w-8 h-8 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-md"
+              title="Manage Services"
+            >
               <i className="fas fa-cog text-sm" />
             </button>
           </div>
-          <h2 className="font-cinzel text-3xl md:text-5xl font-bold tracking-wider mt-3 mb-4">Religious Musical Services</h2>
+
+          <h2 className="font-cinzel text-3xl md:text-5xl font-bold tracking-wider mt-3 mb-4">
+            Religious Musical Services
+          </h2>
           <div className="w-24 h-1 bg-gradient-to-r from-transparent via-gold-500 to-transparent mx-auto" />
           <p className="text-slate-400 max-w-xl mx-auto mt-4 text-sm md:text-base">
             We curate spiritually elevating, beautiful, and authentic musical orchestrations for all sacred celebrations.
           </p>
 
           {/* View toggle */}
-          <div className="flex items-center justify-center gap-1 mt-6">
+          <div className="flex items-center justify-center mt-6">
             <div className="flex bg-royal-900 border border-gold-500/20 rounded-xl p-1 gap-1">
               <button
                 onClick={() => setViewMode('slider')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${
-                  viewMode === 'slider'
-                    ? 'bg-gold-500 text-royal-950 shadow-md'
-                    : 'text-slate-400 hover:text-gold-400'
+                  viewMode === 'slider' ? 'bg-gold-500 text-royal-950 shadow-md' : 'text-slate-400 hover:text-gold-400'
                 }`}
               >
                 <i className="fas fa-layer-group text-[11px]" /> Slider
@@ -424,9 +478,7 @@ const ServicesSection: React.FC = () => {
               <button
                 onClick={() => setViewMode('grid')}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 ${
-                  viewMode === 'grid'
-                    ? 'bg-gold-500 text-royal-950 shadow-md'
-                    : 'text-slate-400 hover:text-gold-400'
+                  viewMode === 'grid' ? 'bg-gold-500 text-royal-950 shadow-md' : 'text-slate-400 hover:text-gold-400'
                 }`}
               >
                 <i className="fas fa-grip text-[11px]" /> Grid
@@ -443,7 +495,10 @@ const ServicesSection: React.FC = () => {
             {isServicesLoading
               ? Array.from({ length: 6 }).map((_, i) => <ServiceSkeletonCard key={i} />)
               : serviceItems.map((service) => (
-                <div key={service.id} className="w-full sm:w-[calc(50%-16px)] lg:w-[calc(33.333%-22px)] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl hover:border-gold-500/50 hover:shadow-2xl hover:shadow-gold-500/5 transition-all duration-300 relative group overflow-hidden">
+                <div
+                  key={service.id}
+                  className="w-full sm:w-[calc(50%-16px)] lg:w-[calc(33.333%-22px)] bg-royal-900 border border-gold-500/10 p-8 rounded-2xl hover:border-gold-500/50 hover:shadow-2xl hover:shadow-gold-500/5 transition-all duration-300 relative group overflow-hidden"
+                >
                   <div className="absolute -top-10 -right-10 w-24 h-24 bg-gold-500/5 rounded-full group-hover:bg-gold-500/10 transition-colors" />
                   <div className="w-14 h-14 bg-gold-500/10 rounded-xl flex items-center justify-center text-gold-500 text-2xl mb-6 border border-gold-500/20">
                     <i className={`fas ${service.icon}`} />
