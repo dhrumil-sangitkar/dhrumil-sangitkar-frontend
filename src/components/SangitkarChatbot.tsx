@@ -85,24 +85,17 @@ Common questions: "How can I book an event?", "How do I contact Dhrumil Shah?", 
     const system = buildSystemPrompt();
 
     try {
-      const resp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1000,
-          system,
-          messages: [
-            ...messages.filter((m) => m.role !== 'error').map((m) => ({
-              role: m.role === 'user' ? 'user' : 'assistant',
-              content: m.content,
-            })),
-            { role: 'user', content: text },
-          ],
-        }),
-      });
-      const data = await resp.json();
-      const aiText = data.content?.[0]?.text || 'Pranam! I could not process that. Please try again.';
+      const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
+const resp = await fetch(`${apiBase}/chat`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    system,
+    messages: [ ... ],  // keep same messages array as before
+  }),
+});
+const data = await resp.json();
+const aiText = data.text || 'Pranam! I could not process that. Please try again.';
       setMessages((prev) => [
         ...prev,
         { id: Date.now().toString(), role: 'ai', content: aiText },
