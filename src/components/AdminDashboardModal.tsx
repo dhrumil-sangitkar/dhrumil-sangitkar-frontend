@@ -35,13 +35,34 @@ const emptyUpload: UploadState = {
   pct: 0,
 };
 
+// ─── Image slot model ─────────────────────────────────────────
+// Each slot is EITHER an already-uploaded Cloudinary image (isNew: false,
+// url holds the real Cloudinary URL) OR a freshly-picked local file that
+// hasn't been uploaded yet (isNew: true, url holds a temporary blob preview,
+// file holds the actual File to upload on save).
+// Keeping everything in ONE ordered array — instead of separate
+// selectedFiles/previewUrls arrays — means adding new files APPENDS to the
+// existing set and removing a slot only removes that one item, regardless
+// of whether it was an existing image or a newly picked one.
+interface ImageSlot {
+  key: string;
+  url: string;
+  isNew: boolean;
+  file?: File;
+}
+
 const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) => {
   const { mediaItems, addMediaItem, updateMediaItem, deleteMediaItem, showToast, maxMediaItems } = useMedia();
   const [showForm, setShowForm]         = useState(false);
   const [form, setForm]                 = useState<AdminMediaFormData>(emptyForm);
   const [isEditing, setIsEditing]       = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [previewUrls, setPreviewUrls]   = useState<string[]>([]);  // local blob URLs for preview only
+
+  // Multi-image gallery state (type === 'file_image')
+  const [imageSlots, setImageSlots]     = useState<ImageSlot[]>([]);
+  // Single video file state (type === 'file_video')
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>('');
+
   const [uploadState, setUploadState]   = useState<UploadState>(emptyUpload);
   const [aiLoading, setAiLoading]       = useState(false);
   const [saving, setSaving]             = useState(false);
@@ -68,16 +89,35 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       category: item.category,
     });
     setIsEditing(true);
-    // Show existing Cloudinary URLs as "previews" for editing context
-    const existingUrls = item.images && item.images.length > 0 ? item.images : (item.url ? [item.url] : []);
-    setPreviewUrls(existingUrls);
-    setSelectedFiles([]);
+
+    if (item.type === 'file_image') {
+      // Seed the slot list with the existing Cloudinary URLs so they can be
+      // reordered/removed/added-to just like newly picked files.
+      const existingUrls = item.images && item.images.length > 0 ? item.images : (item.url ? [item.url] : []);
+      setImageSlots(existingUrls.map((url, i) => ({ key: `existing-${i}-${url}`, url, isNew: false })));
+      setVideoFile(null);
+      setVideoPreviewUrl('');
+    } else if (item.type === 'file_video') {
+      setImageSlots([]);
+      setVideoFile(null);
+      setVideoPreviewUrl(item.url || '');
+    } else {
+      setImageSlots([]);
+      setVideoFile(null);
+      setVideoPreviewUrl('');
+    }
+
     setShowForm(true);
   };
 
   const clearFileState = () => {
-    setSelectedFiles([]);
-    setPreviewUrls([]);
+    // Revoke any local blob URLs we created so we don't leak memory.
+    imageSlots.forEach((slot) => { if (slot.isNew) URL.revokeObjectURL(slot.url); });
+    if (videoPreviewUrl && videoPreviewUrl.startsWith('blob:')) URL.revokeObjectURL(videoPreviewUrl);
+
+    setImageSlots([]);
+    setVideoFile(null);
+    setVideoPreviewUrl('');
     setUploadState(emptyUpload);
   };
 
@@ -87,39 +127,44 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
     clearFileState();
   };
 
-  // ─── File selection (no upload yet — just preview) ───────────
+  // ─── File selection ───────────────────────────────────────────
+  // For images: APPEND newly picked files to whatever is already in
+  // imageSlots (existing Cloudinary images + any previously picked files).
+  // This is the key fix — previously this handler replaced the entire
+  // array, which is why removing one image and picking a new one wiped
+  // out every other image in the gallery.
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     if (form.type === 'file_image') {
       const fileArr = Array.from(files);
-      setSelectedFiles(fileArr);
-      // Create local blob URLs purely for the preview thumbnails.
-      // These are revoked when the component clears state.
-      const locals = fileArr.map((f) => URL.createObjectURL(f));
-      setPreviewUrls(locals);
-      // Clear any previously stored Cloudinary URLs until this new batch uploads
-      setForm((f) => ({ ...f, url: '', images: [] }));
+      const newSlots: ImageSlot[] = fileArr.map((f, i) => ({
+        key: `new-${Date.now()}-${i}-${f.name}`,
+        url: URL.createObjectURL(f),
+        isNew: true,
+        file: f,
+      }));
+      setImageSlots((prev) => [...prev, ...newSlots]);
     } else {
-      // Video file — create a single local preview
+      // Video is a single file — replace whatever was selected before.
+      if (videoPreviewUrl && videoPreviewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(videoPreviewUrl);
+      }
       const file = files[0];
-      const local = URL.createObjectURL(file);
-      setSelectedFiles([file]);
-      setPreviewUrls([local]);
-      setForm((f) => ({ ...f, url: '', images: [] }));
+      setVideoFile(file);
+      setVideoPreviewUrl(URL.createObjectURL(file));
     }
+
+    // Reset the input value so picking the exact same file again still fires onChange.
+    e.target.value = '';
   };
 
-  const removePreviewImage = (idx: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
-    setPreviewUrls((prev) => {
-      URL.revokeObjectURL(prev[idx]);
+  const removeImageSlot = (idx: number) => {
+    setImageSlots((prev) => {
+      const slot = prev[idx];
+      if (slot?.isNew) URL.revokeObjectURL(slot.url);
       return prev.filter((_, i) => i !== idx);
-    });
-    setForm((f) => {
-      const imgs = (f.images || []).filter((_, i) => i !== idx);
-      return { ...f, images: imgs, url: imgs[0] || '' };
     });
   };
 
@@ -127,41 +172,78 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const hasExistingUrl    = !!form.url;
-    const hasNewFiles       = selectedFiles.length > 0;
-    const hasExistingImages = form.images && form.images.length > 0;
-
-    if (!hasExistingUrl && !hasNewFiles && !hasExistingImages) {
-      showToast('Please provide a media URL or select image files.', 'error');
-      return;
+    // ── Validate per media type ──
+    if (form.type === 'file_image') {
+      if (imageSlots.length === 0) {
+        showToast('Please select at least one image.', 'error');
+        return;
+      }
+    } else if (form.type === 'file_video') {
+      if (!videoFile && !videoPreviewUrl) {
+        showToast('Please select a video file.', 'error');
+        return;
+      }
+    } else {
+      if (!form.url.trim()) {
+        showToast('Please provide a media URL.', 'error');
+        return;
+      }
     }
 
     setSaving(true);
 
     try {
       let finalUrl    = form.url;
-      let finalImages = form.images || [];
+      let finalImages: string[] = [];
 
-      // ── Upload new files to Cloudinary if any were selected ──
-      if (hasNewFiles && (form.type === 'file_image' || form.type === 'file_video')) {
-        setUploadState({ active: true, currentFile: '', currentIndex: 0, total: selectedFiles.length, pct: 0 });
+      if (form.type === 'file_image') {
+        const slotsToUpload = imageSlots.filter((s) => s.isNew && s.file);
 
-        const uploadedUrls = await uploadFilesToCloudinary(
-          selectedFiles,
-          ({ file, index, total, pct }) => {
-            setUploadState({ active: true, currentFile: file, currentIndex: index, total, pct });
-          },
-        );
+        if (slotsToUpload.length > 0) {
+          setUploadState({ active: true, currentFile: '', currentIndex: 0, total: slotsToUpload.length, pct: 0 });
 
-        setUploadState(emptyUpload);
+          const uploadedUrls = await uploadFilesToCloudinary(
+            slotsToUpload.map((s) => s.file as File),
+            ({ file, index, total, pct }) => {
+              setUploadState({ active: true, currentFile: file, currentIndex: index, total, pct });
+            },
+          );
 
-        if (form.type === 'file_image') {
-          finalUrl    = uploadedUrls[0];
-          finalImages = uploadedUrls;
+          setUploadState(emptyUpload);
+
+          // Merge uploaded URLs back into their original positions so the
+          // final order (and cover image) matches what the admin arranged,
+          // while keeping every existing image that wasn't touched.
+          let uploadIdx = 0;
+          finalImages = imageSlots.map((slot) => (slot.isNew ? uploadedUrls[uploadIdx++] : slot.url));
         } else {
-          finalUrl    = uploadedUrls[0];
-          finalImages = [];
+          // Nothing new to upload — keep the existing images as-is (minus
+          // whatever was removed with the "x" button).
+          finalImages = imageSlots.map((slot) => slot.url);
         }
+
+        finalUrl = finalImages[0] || '';
+      } else if (form.type === 'file_video') {
+        if (videoFile) {
+          setUploadState({ active: true, currentFile: videoFile.name, currentIndex: 0, total: 1, pct: 0 });
+
+          const uploadedUrls = await uploadFilesToCloudinary(
+            [videoFile],
+            ({ file, index, total, pct }) => {
+              setUploadState({ active: true, currentFile: file, currentIndex: index, total, pct });
+            },
+          );
+
+          setUploadState(emptyUpload);
+          finalUrl = uploadedUrls[0];
+        } else {
+          // Editing without picking a new video — keep the existing URL.
+          finalUrl = videoPreviewUrl;
+        }
+        finalImages = [];
+      } else {
+        finalUrl    = form.url;
+        finalImages = [];
       }
 
       const payload = {
@@ -169,7 +251,11 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
         gujaratiTitle:  form.gujaratiTitle,
         type:           form.type,
         url:            finalUrl,
-        images:         finalImages.length > 1 ? finalImages : undefined,
+        // Always send the real array (even empty) — never `undefined`.
+        // Sending `undefined` gets stripped by JSON.stringify, and the
+        // backend's `COALESCE($5, images)` then silently keeps the OLD
+        // images, which was the second half of this bug.
+        images:         finalImages,
         description:    form.description,
         category:       form.category,
       };
@@ -367,8 +453,11 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                     />
                     {form.type === 'file_image' && (
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Select multiple photos to create a swipeable slider. Files are uploaded to Cloudinary — the first becomes the cover.
+                        Select multiple photos to create a swipeable slider. Files are uploaded to Cloudinary — the first becomes the cover. Picking more files adds to your existing selection; use the × to remove any of them.
                       </p>
+                    )}
+                    {form.type === 'file_video' && videoFile && (
+                      <p className="text-[10px] text-slate-400 mt-1">Selected: {videoFile.name}</p>
                     )}
 
                     {/* Upload progress bar */}
@@ -391,18 +480,18 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                     )}
 
                     {/* Image previews */}
-                    {form.type === 'file_image' && previewUrls.length > 0 && (
+                    {form.type === 'file_image' && imageSlots.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {previewUrls.map((src, idx) => (
-                          <div key={idx} className="relative w-16 h-16 shrink-0">
+                        {imageSlots.map((slot, idx) => (
+                          <div key={slot.key} className="relative w-16 h-16 shrink-0">
                             <img
-                              src={src}
+                              src={slot.url}
                               alt={`Preview ${idx + 1}`}
                               className="w-full h-full rounded-lg object-cover border border-gold-500/20"
                             />
                             <button
                               type="button"
-                              onClick={() => removePreviewImage(idx)}
+                              onClick={() => removeImageSlot(idx)}
                               disabled={isBusy}
                               className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-[9px] shadow disabled:opacity-50"
                             >
