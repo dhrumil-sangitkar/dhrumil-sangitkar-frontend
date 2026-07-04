@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMedia } from '../context/MediaContext';
 import { MediaItem, AdminMediaFormData } from '../types';
-import { compressImageFiles } from '../utils/compressImage';
+import { uploadFilesToCloudinary } from '../utils/cloudinaryUpload';
 
 interface Props {
   onClose: () => void;
@@ -18,24 +18,41 @@ const emptyForm: AdminMediaFormData = {
   category: 'Video',
 };
 
+// ─── Upload progress state ────────────────────────────────────
+interface UploadState {
+  active: boolean;
+  currentFile: string;
+  currentIndex: number;
+  total: number;
+  pct: number;
+}
+
+const emptyUpload: UploadState = {
+  active: false,
+  currentFile: '',
+  currentIndex: 0,
+  total: 0,
+  pct: 0,
+};
+
 const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) => {
   const { mediaItems, addMediaItem, updateMediaItem, deleteMediaItem, showToast, maxMediaItems } = useMedia();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<AdminMediaFormData>(emptyForm);
-  const [isEditing, setIsEditing] = useState(false);
-  const [filePreview, setFilePreview] = useState('');
-  const [filePreviews, setFilePreviews] = useState<string[]>([]);
-  const [isCompressing, setIsCompressing] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm]         = useState(false);
+  const [form, setForm]                 = useState<AdminMediaFormData>(emptyForm);
+  const [isEditing, setIsEditing]       = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [previewUrls, setPreviewUrls]   = useState<string[]>([]);  // local blob URLs for preview only
+  const [uploadState, setUploadState]   = useState<UploadState>(emptyUpload);
+  const [aiLoading, setAiLoading]       = useState(false);
+  const [saving, setSaving]             = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleting, setDeleting]         = useState<string | null>(null);
 
+  // ─── Open/close helpers ──────────────────────────────────────
   const openAdd = () => {
     setForm(emptyForm);
     setIsEditing(false);
-    setFilePreview('');
-    setFilePreviews([]);
+    clearFileState();
     setShowForm(true);
   };
 
@@ -51,115 +68,148 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       category: item.category,
     });
     setIsEditing(true);
-    setFilePreview('');
-    setFilePreviews(item.images && item.images.length > 0 ? item.images : []);
+    // Show existing Cloudinary URLs as "previews" for editing context
+    const existingUrls = item.images && item.images.length > 0 ? item.images : (item.url ? [item.url] : []);
+    setPreviewUrls(existingUrls);
+    setSelectedFiles([]);
     setShowForm(true);
   };
 
+  const clearFileState = () => {
+    setSelectedFiles([]);
+    setPreviewUrls([]);
+    setUploadState(emptyUpload);
+  };
+
+  const handleTypeChange = (type: MediaItem['type']) => {
+    const isVideo = type === 'file_video' || type === 'youtube' || type === 'instagram';
+    setForm((f) => ({ ...f, type, category: isVideo ? 'Video' : 'Image', url: '', images: [] }));
+    clearFileState();
+  };
+
+  // ─── File selection (no upload yet — just preview) ───────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     if (form.type === 'file_image') {
-      const fileArray = Array.from(files);
-      setIsCompressing(true);
-      compressImageFiles(fileArray)
-        .then((results) => {
-          setForm((f) => ({ ...f, url: results[0], images: results }));
-          setFilePreviews(results);
-          setFilePreview(results[0]);
-        })
-        .catch(() => {
-          showToast('One or more images could not be processed. Try a different photo.', 'error');
-        })
-        .finally(() => setIsCompressing(false));
+      const fileArr = Array.from(files);
+      setSelectedFiles(fileArr);
+      // Create local blob URLs purely for the preview thumbnails.
+      // These are revoked when the component clears state.
+      const locals = fileArr.map((f) => URL.createObjectURL(f));
+      setPreviewUrls(locals);
+      // Clear any previously stored Cloudinary URLs until this new batch uploads
+      setForm((f) => ({ ...f, url: '', images: [] }));
     } else {
+      // Video file — create a single local preview
       const file = files[0];
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        setForm((f) => ({ ...f, url: result, images: [] }));
-        setFilePreview(result);
-        setFilePreviews([]);
-      };
-      reader.readAsDataURL(file);
+      const local = URL.createObjectURL(file);
+      setSelectedFiles([file]);
+      setPreviewUrls([local]);
+      setForm((f) => ({ ...f, url: '', images: [] }));
     }
   };
 
   const removePreviewImage = (idx: number) => {
-    setFilePreviews((prev) => {
-      const next = prev.filter((_, i) => i !== idx);
-      setForm((f) => ({ ...f, images: next, url: next[0] || '' }));
-      setFilePreview(next[0] || '');
-      return next;
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
+    setPreviewUrls((prev) => {
+      URL.revokeObjectURL(prev[idx]);
+      return prev.filter((_, i) => i !== idx);
+    });
+    setForm((f) => {
+      const imgs = (f.images || []).filter((_, i) => i !== idx);
+      return { ...f, images: imgs, url: imgs[0] || '' };
     });
   };
 
-  const handleTypeChange = (type: MediaItem['type']) => {
-    const isVideo = type === 'file_video' || type === 'youtube' || type === 'instagram';
-    setForm((f) => ({
-      ...f,
-      type,
-      category: isVideo ? 'Video' : 'Image',
-      url: '',
-      images: [],
-    }));
-    setFilePreview('');
-    setFilePreviews([]);
-  };
-
+  // ─── Save handler ────────────────────────────────────────────
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.url && !filePreview && filePreviews.length === 0) {
-      showToast('Please provide a media URL or upload a file.', 'error');
+
+    const hasExistingUrl    = !!form.url;
+    const hasNewFiles       = selectedFiles.length > 0;
+    const hasExistingImages = form.images && form.images.length > 0;
+
+    if (!hasExistingUrl && !hasNewFiles && !hasExistingImages) {
+      showToast('Please provide a media URL or select image files.', 'error');
       return;
     }
 
     setSaving(true);
-    const payload = {
-      title: form.title,
-      gujaratiTitle: form.gujaratiTitle,
-      type: form.type,
-      url: form.url,
-      images: form.images && form.images.length > 0 ? form.images : undefined,
-      description: form.description,
-      category: form.category,
-    };
 
     try {
+      let finalUrl    = form.url;
+      let finalImages = form.images || [];
+
+      // ── Upload new files to Cloudinary if any were selected ──
+      if (hasNewFiles && (form.type === 'file_image' || form.type === 'file_video')) {
+        setUploadState({ active: true, currentFile: '', currentIndex: 0, total: selectedFiles.length, pct: 0 });
+
+        const uploadedUrls = await uploadFilesToCloudinary(
+          selectedFiles,
+          ({ file, index, total, pct }) => {
+            setUploadState({ active: true, currentFile: file, currentIndex: index, total, pct });
+          },
+        );
+
+        setUploadState(emptyUpload);
+
+        if (form.type === 'file_image') {
+          finalUrl    = uploadedUrls[0];
+          finalImages = uploadedUrls;
+        } else {
+          finalUrl    = uploadedUrls[0];
+          finalImages = [];
+        }
+      }
+
+      const payload = {
+        title:          form.title,
+        gujaratiTitle:  form.gujaratiTitle,
+        type:           form.type,
+        url:            finalUrl,
+        images:         finalImages.length > 1 ? finalImages : undefined,
+        description:    form.description,
+        category:       form.category,
+      };
+
       if (isEditing && form.id) {
         await updateMediaItem(form.id, payload);
       } else {
         await addMediaItem(payload);
       }
-      // Only close form on success
+
       setShowForm(false);
       setForm(emptyForm);
-      setFilePreviews([]);
-    } catch {
-      // Error toast already shown by context — keep form open so user can fix
+      clearFileState();
+    } catch (err: unknown) {
+      // Cloudinary config error — give a clearer message
+      const msg = (err as Error)?.message || '';
+      if (msg.includes('Cloudinary is not configured')) {
+        showToast('Image hosting not set up yet. See setup instructions.', 'error');
+      }
+      // Other errors already toasted by MediaContext
     } finally {
       setSaving(false);
+      setUploadState(emptyUpload);
     }
   };
 
+  // ─── Delete handler ──────────────────────────────────────────
   const handleDelete = async (id: string) => {
     setDeleting(id);
     try {
       await deleteMediaItem(id);
       setConfirmDelete(null);
-    } catch {
-      // Error toast shown by context
-    } finally {
+    } catch { /* error toast shown by context */ } finally {
       setDeleting(null);
     }
   };
 
+  // ─── AI Auto-Fill ────────────────────────────────────────────
   const autoFill = async () => {
-    if (!form.title.trim()) {
-      showToast('Enter a title first so AI can enrich it!', 'info');
-      return;
-    }
+    if (!form.title.trim()) { showToast('Enter a title first so AI can enrich it!', 'info'); return; }
     setAiLoading(true);
     try {
       const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -175,7 +225,7 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       const data = await resp.json();
       const text = data.content?.[0]?.text || '';
       const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-      if (parsed.gujarati) setForm((f) => ({ ...f, gujaratiTitle: parsed.gujarati }));
+      if (parsed.gujarati)    setForm((f) => ({ ...f, gujaratiTitle: parsed.gujarati }));
       if (parsed.description) setForm((f) => ({ ...f, description: parsed.description }));
       showToast('AI Auto-Fill successful!', 'success');
     } catch {
@@ -185,69 +235,67 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
     }
   };
 
+  const isBusy = saving || uploadState.active;
+
+  // ─── Render ──────────────────────────────────────────────────
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-royal-900 border-2 border-gold-500 rounded-3xl p-6 md:p-8 max-w-4xl w-full max-h-[90vh] flex flex-col relative shadow-2xl overflow-hidden">
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white transition z-20 w-8 h-8 flex items-center justify-center bg-royal-950/50 hover:bg-royal-950 rounded-full border border-gold-500/10"
-        >
-          <i className="fas fa-times text-sm" />
-        </button>
+      <div className="relative bg-royal-900 border border-gold-500/30 rounded-2xl w-full max-w-3xl my-auto shadow-2xl">
 
         {/* Header */}
-        <div className="border-b border-gold-500/20 pb-4 mb-6 shrink-0 pr-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h2 className="font-cinzel text-xl md:text-2xl font-bold text-gold-500">Media Management Dashboard</h2>
-              <p className="text-xs text-slate-400">Add, update, or remove gallery showcase assets in real time.</p>
-            </div>
+        <div className="flex items-start justify-between p-6 border-b border-gold-500/10">
+          <div>
+            <h2 className="font-cinzel text-xl font-bold text-gold-400">Media Management Dashboard</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Add, update, or remove gallery showcase assets in real time.</p>
+          </div>
+          <div className="flex items-center gap-3">
             <button
               onClick={openAdd}
-              disabled={mediaItems.length >= maxMediaItems}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center gap-2 self-start transition-all hover:scale-105 shadow-md"
-              title={mediaItems.length >= maxMediaItems ? `Maximum ${maxMediaItems} items reached` : 'Add new media'}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-semibold transition shadow-md hover:scale-105 self-start"
             >
               <i className="fas fa-plus" /> Add New Media
-              {mediaItems.length >= maxMediaItems && <span className="ml-1 text-yellow-300">(Limit reached)</span>}
+            </button>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-gold-500 transition z-20 w-8 h-8 flex items-center justify-center bg-royal-950/50 hover:bg-royal-800 rounded-full border border-gold-500/10"
+            >
+              <i className="fas fa-times text-sm" />
             </button>
           </div>
         </div>
 
-        {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto pr-2 space-y-6 custom-modal-scrollbar">
-          {/* Add / Edit Form */}
+        {/* Scrollable content */}
+        <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto custom-modal-scrollbar">
+
+          {/* ── Add / Edit Form ── */}
           {showForm && (
-            <div className="bg-royal-950 border border-gold-500/20 rounded-2xl p-6">
-              <div className="flex items-center justify-between border-b border-gold-500/10 pb-3 mb-4">
-                <h3 className="font-cinzel text-sm text-gold-400 font-semibold uppercase tracking-wider">
+            <div className="bg-royal-950 border border-gold-500/20 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="font-cinzel text-xs text-gold-400 font-semibold uppercase tracking-wider">
                   {isEditing ? 'Edit Gallery Item' : 'Add Gallery Item'}
                 </h3>
                 <button
                   type="button"
                   onClick={autoFill}
-                  disabled={aiLoading}
-                  className="px-3 py-1.5 bg-gradient-to-r from-gold-600 to-gold-400 hover:from-gold-500 hover:to-gold-300 text-royal-950 rounded-lg text-xs font-extrabold flex items-center gap-1.5 shadow transition-all hover:scale-105 disabled:opacity-60"
+                  disabled={aiLoading || isBusy}
+                  className="flex items-center gap-1.5 bg-gold-500 hover:bg-gold-600 text-royal-950 px-3 py-1.5 rounded-lg text-[11px] font-bold transition disabled:opacity-60"
                 >
-                  {aiLoading ? (
-                    <i className="fas fa-circle-notch animate-spin" />
-                  ) : (
-                    <i className="fas fa-wand-magic-sparkles" />
-                  )}
-                  AI Auto-Fill
+                  {aiLoading
+                    ? <><i className="fas fa-circle-notch animate-spin" /> Thinking...</>
+                    : <><i className="fas fa-wand-magic-sparkles" /> AI Auto-Fill</>}
                 </button>
               </div>
 
               <form onSubmit={handleSave} className="space-y-4">
-                {/* Title Row */}
+
+                {/* Title row */}
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-slate-400 uppercase tracking-widest mb-1.5 font-semibold">
-                      Title (English) *
+                      Title (English) <span className="text-rose-400">*</span>
                     </label>
                     <input
                       required
@@ -281,11 +329,11 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                       onChange={(e) => handleTypeChange(e.target.value as MediaItem['type'])}
                       className="w-full bg-royal-900 border border-gold-500/20 rounded-lg px-3 py-2 text-slate-200 focus:border-gold-500 text-sm transition"
                     >
-                      <option value="image">Image URL</option>
-                      <option value="file_image">Upload Local Image</option>
-                      <option value="youtube">YouTube Embed URL</option>
+                      <option value="youtube">YouTube Link</option>
+                      <option value="instagram">Instagram Link</option>
+                      <option value="file_image">Upload Local Image(s)</option>
                       <option value="file_video">Upload Local Video</option>
-                      <option value="instagram">Instagram Reel Link</option>
+                      <option value="image">Image URL (external)</option>
                     </select>
                   </div>
                   <div>
@@ -303,39 +351,60 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                   </div>
                 </div>
 
-                {/* URL / File Input */}
-                {form.type === 'file_image' || form.type === 'file_video' ? (
+                {/* Media input */}
+                {(form.type === 'file_image' || form.type === 'file_video') ? (
                   <div>
                     <label className="block text-xs text-slate-400 uppercase tracking-widest mb-1.5 font-semibold">
-                      {form.type === 'file_image' ? 'Select Image File(s)' : 'Select Video File (Max 100MB)'}
+                      {form.type === 'file_image' ? 'Select Image File(s)' : 'Select Video File'}
                     </label>
                     <input
                       type="file"
                       accept={form.type === 'file_image' ? 'image/*' : 'video/*'}
                       multiple={form.type === 'file_image'}
                       onChange={handleFileChange}
-                      disabled={isCompressing}
+                      disabled={isBusy}
                       className="w-full bg-royal-900 border border-gold-500/20 rounded-lg px-3 py-2 text-slate-200 text-sm disabled:opacity-60"
                     />
                     {form.type === 'file_image' && (
                       <p className="text-[10px] text-slate-400 mt-1">
-                        Select multiple photos to create a swipeable slider. The first one becomes the cover image.
+                        Select multiple photos to create a swipeable slider. Files are uploaded to Cloudinary — the first becomes the cover.
                       </p>
                     )}
-                    {isCompressing && (
-                      <p className="text-[10px] text-gold-400 mt-1 flex items-center gap-1.5">
-                        <i className="fas fa-circle-notch animate-spin" /> Processing images...
-                      </p>
+
+                    {/* Upload progress bar */}
+                    {uploadState.active && (
+                      <div className="mt-3 space-y-1.5">
+                        <div className="flex justify-between text-[10px] text-gold-400">
+                          <span className="flex items-center gap-1.5">
+                            <i className="fas fa-cloud-upload-alt animate-pulse" />
+                            Uploading {uploadState.currentIndex + 1} of {uploadState.total}: {uploadState.currentFile}
+                          </span>
+                          <span>{uploadState.pct}%</span>
+                        </div>
+                        <div className="w-full bg-royal-800 rounded-full h-1.5">
+                          <div
+                            className="bg-gold-500 h-1.5 rounded-full transition-all duration-300"
+                            style={{ width: `${uploadState.pct}%` }}
+                          />
+                        </div>
+                      </div>
                     )}
-                    {form.type === 'file_image' && filePreviews.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {filePreviews.map((src, idx) => (
+
+                    {/* Image previews */}
+                    {form.type === 'file_image' && previewUrls.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {previewUrls.map((src, idx) => (
                           <div key={idx} className="relative w-16 h-16 shrink-0">
-                            <img src={src} alt={`Preview ${idx + 1}`} className="w-full h-full rounded-lg object-cover border border-gold-500/20" />
+                            <img
+                              src={src}
+                              alt={`Preview ${idx + 1}`}
+                              className="w-full h-full rounded-lg object-cover border border-gold-500/20"
+                            />
                             <button
                               type="button"
                               onClick={() => removePreviewImage(idx)}
-                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-[9px] shadow"
+                              disabled={isBusy}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-600 hover:bg-rose-700 text-white rounded-full flex items-center justify-center text-[9px] shadow disabled:opacity-50"
                             >
                               <i className="fas fa-times" />
                             </button>
@@ -347,10 +416,6 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      filePreview && form.type === 'file_image' && (
-                        <img src={filePreview} alt="Preview" className="mt-2 h-20 rounded-lg object-cover border border-gold-500/20" />
-                      )
                     )}
                   </div>
                 ) : (
@@ -394,26 +459,26 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
                 <div className="flex justify-end gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowForm(false)}
-                    disabled={saving}
+                    onClick={() => { setShowForm(false); clearFileState(); }}
+                    disabled={isBusy}
                     className="px-4 py-2 bg-royal-800 hover:bg-royal-700 text-slate-300 rounded-lg text-xs font-semibold transition disabled:opacity-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={saving || isCompressing}
+                    disabled={isBusy}
                     className="px-5 py-2 bg-gold-500 hover:bg-gold-600 text-royal-950 rounded-lg text-xs font-bold transition shadow-md disabled:opacity-60 flex items-center gap-2"
                   >
-                    {saving && <i className="fas fa-circle-notch animate-spin" />}
-                    {saving ? 'Saving...' : 'Save Changes'}
+                    {isBusy && <i className="fas fa-circle-notch animate-spin" />}
+                    {uploadState.active ? 'Uploading...' : saving ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {/* Media List */}
+          {/* ── Media List ── */}
           <div>
             <h3 className="font-cinzel text-sm text-gold-400 font-semibold uppercase tracking-wider mb-4 border-b border-gold-500/10 pb-2">
               Currently Configured Assets ({mediaItems.length}/{maxMediaItems})
