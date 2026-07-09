@@ -166,7 +166,7 @@ const MediaViewerModal: React.FC<Props> = ({ item, onClose, sanitizeYouTubeUrl }
               />
             )}
             {item.type === 'file_video' && (
-              <video src={item.url} controls autoPlay className="w-full h-full" />
+              <video src={item.url} controls autoPlay poster={item.thumbnail} className="w-full h-full" />
             )}
           </div>
         )}

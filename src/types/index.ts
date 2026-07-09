@@ -5,6 +5,7 @@ export interface MediaItem {
   type: 'youtube' | 'image' | 'file_image' | 'file_video' | 'instagram';
   url: string;
   images?: string[];
+  thumbnail?: string;
   description?: string;
   category: 'Image' | 'Video';
   timestamp: number;

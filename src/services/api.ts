@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { MediaItem, BookingFormData, ServiceItem } from '../types';
+import { BookingFormData, ServiceItem } from '../types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api';
 
@@ -68,21 +68,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
-// ─── Media Gallery API ───────────────────────────────────────
-export const mediaApi = {
-  getAll: (): Promise<MediaItem[]> =>
-    withColdStartRetry((timeout) => api.get('/media', { timeout }).then((r) => r.data)),
-
-  create: (item: Omit<MediaItem, 'id' | 'timestamp'>): Promise<MediaItem> =>
-    withColdStartRetry((timeout) => api.post('/media', item, { timeout }).then((r) => r.data)),
-
-  update: (id: string, item: Partial<MediaItem>): Promise<MediaItem> =>
-    withColdStartRetry((timeout) => api.put(`/media/${id}`, item, { timeout }).then((r) => r.data)),
-
-  delete: (id: string): Promise<void> =>
-    withColdStartRetry((timeout) => api.delete(`/media/${id}`, { timeout }).then((r) => r.data)),
-};
 
 // ─── Booking / Inquiry API ────────────────────────────────────
 export const bookingApi = {

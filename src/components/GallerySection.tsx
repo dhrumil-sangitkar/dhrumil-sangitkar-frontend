@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useMedia } from '../context/MediaContext';
 import { MediaItem, FilterType } from '../types';
 import MediaViewerModal from './MediaViewerModal';
-import AdminPinModal from './AdminPinModal';
-import AdminDashboardModal from './AdminDashboardModal';
 
 const filterButtons: { label: string; value: FilterType }[] = [
   { label: 'All', value: 'all' },
@@ -46,10 +44,11 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onOpen }) => {
   const isYoutube = item.type === 'youtube';
   const isInstagram = item.type === 'instagram';
   const isImage = item.type === 'image' || item.type === 'file_image';
+  const customThumbnail = item.thumbnail ?? item.images?.[0] ?? null;
 
   const youtubeThumbnail = isYoutube ? getYouTubeThumbnail(item.url) : null;
   const instagramThumbnail = isInstagram ? getInstagramThumbnail(item.url) : null;
-  const showThumbnail = isImage || youtubeThumbnail || instagramThumbnail;
+  const showThumbnail = isImage || youtubeThumbnail || instagramThumbnail || !!customThumbnail;
 
   return (
     <div
@@ -57,10 +56,10 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onOpen }) => {
       onClick={() => onOpen(item)}
     >
       {/* Thumbnail / Preview */}
-      <div className="relative aspect-video bg-royal-950 overflow-hidden">
-        {isImage ? (
+      <div className="relative aspect-[5/4] sm:aspect-[4/3] bg-royal-950 overflow-hidden">
+        {isImage || customThumbnail ? (
           <img
-            src={item.url}
+            src={isImage ? item.url : customThumbnail!}
             alt={item.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             loading="lazy"
@@ -129,43 +128,16 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onOpen }) => {
 
 // ─── Gallery Section ──────────────────────────────────────────
 
-// ─── Gallery Skeleton Card ────────────────────────────────────
-const GallerySkeletonCard: React.FC = () => (
-  <div className="bg-royal-900 border border-gold-500/10 rounded-2xl overflow-hidden animate-pulse">
-    <div className="aspect-video bg-royal-950" />
-    <div className="p-4 space-y-2">
-      <div className="h-4 bg-slate-700/50 rounded w-3/4" />
-      <div className="h-3 bg-slate-700/30 rounded w-1/2" />
-    </div>
-  </div>
-);
-
 const GallerySection: React.FC = () => {
-  const { mediaItems, isLoading, maxMediaItems } = useMedia();
+  const { mediaItems } = useMedia();
   const [filter, setFilter] = useState<FilterType>('all');
   const [viewerItem, setViewerItem] = useState<MediaItem | null>(null);
-  const [showPinModal, setShowPinModal] = useState(false);
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const { isAdmin } = useMedia();
 
   const filtered = mediaItems.filter((item) => {
     if (filter === 'all') return true;
     if (filter === 'youtube') return item.type === 'youtube';
     return item.category === filter;
   });
-
-  const handleAdminClick = () => {
-    if (isAdmin) {
-      setShowAdminModal(true);
-    } else {
-      setShowPinModal(true);
-    }
-  };
-
-  const handlePinSuccess = () => {
-    setShowPinModal(false);
-    setShowAdminModal(true);
-  };
 
   return (
     <section id="gallery" className="py-24 bg-royal-900/40 border-t border-gold-500/10 px-4">
@@ -176,20 +148,13 @@ const GallerySection: React.FC = () => {
             <span className="text-xs text-gold-500 font-bold uppercase tracking-widest bg-gold-500/10 px-3 py-1 rounded-full border border-gold-500/20">
               Video & Image Archive • ગેલેરી
             </span>
-            <button
-              onClick={handleAdminClick}
-              className="w-8 h-8 rounded-full bg-royal-900 border border-gold-500/30 text-gold-500 flex items-center justify-center hover:bg-gold-500 hover:text-royal-950 hover:border-gold-500 transition-all duration-300 shadow-md"
-              title="Admin Settings Panel"
-            >
-              <i className="fas fa-cog text-sm" />
-            </button>
           </div>
           <h2 className="font-cinzel text-3xl md:text-5xl font-bold tracking-wider mt-3 mb-4">Official Media Gallery</h2>
           <p className="text-slate-400 max-w-xl mx-auto text-sm">
             Experience live devotional works directly below. Click any card to play immediately.
           </p>
           <p className="text-xs text-slate-500 mt-2">
-            {mediaItems.length}/{maxMediaItems} items
+            {mediaItems.length} item{mediaItems.length === 1 ? '' : 's'}
           </p>
         </div>
 
@@ -211,15 +176,7 @@ const GallerySection: React.FC = () => {
         </div>
 
         {/* Grid - centered */}
-        {isLoading ? (
-          <div className="flex flex-wrap justify-center gap-6">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="w-full sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)] xl:w-[calc(25%-18px)]">
-                <GallerySkeletonCard />
-              </div>
-            ))}
-          </div>
-        ) : filtered.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="text-center py-24 text-slate-500">
             <i className="fas fa-photo-film text-5xl mb-4 opacity-30" />
             <p className="text-sm">No media found for this filter.</p>
@@ -235,23 +192,11 @@ const GallerySection: React.FC = () => {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Viewer modal */}
       {viewerItem && (
         <MediaViewerModal
           item={viewerItem}
           onClose={() => setViewerItem(null)}
-          sanitizeYouTubeUrl={sanitizeYouTubeUrl}
-        />
-      )}
-      {showPinModal && (
-        <AdminPinModal
-          onClose={() => setShowPinModal(false)}
-          onSuccess={handlePinSuccess}
-        />
-      )}
-      {showAdminModal && (
-        <AdminDashboardModal
-          onClose={() => setShowAdminModal(false)}
           sanitizeYouTubeUrl={sanitizeYouTubeUrl}
         />
       )}
