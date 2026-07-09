@@ -37,7 +37,7 @@ export const MEDIA_ITEMS: MediaItem[] = [
 },
   {
     id: 'media-2',
-    title: 'Devotional Jain bhajan',
+    title: 'Devotional Jain Stavan',
     gujaratiTitle: 'જેની કીકી કાળી છે...',
     type: 'file_video',
     url: '/media/Jeni_kiki_kali_chhe.mp4',
@@ -53,7 +53,7 @@ export const MEDIA_ITEMS: MediaItem[] = [
   gujaratiTitle: 'સક્રાસ્તવ મહા અભિષેક', 
   type: 'file_image',
   url: '/media/8.jpeg',
-  images: ['/media/8.jpeg', '/media/9.jpeg', '/media/10.jpeg', '/media/11.jpeg'],
+  images: ['/media/8.jpeg', '/media/9.jpeg', '/media/10.jpeg', '/media/sakrastav1.jpeg', '/media/sakrastav2.jpeg'],
   description: 'સક્રસ્તવ મહા અભિષેકના આ પાવન પ્રસંગની દિવ્ય ક્ષણો, જે ભક્તિ, શ્રદ્ધા અને જૈન પરંપરાની આધ્યાત્મિક ભવ્યતાનું સુંદર પ્રતિબિંબ છે.',
   category: 'Image',
   timestamp: Date.now(),
@@ -69,7 +69,31 @@ export const MEDIA_ITEMS: MediaItem[] = [
     description: 'પવિત્ર સંગીત દ્વારા શ્રી સીમંધર સ્વામીની દિવ્ય મહિમા અને ભક્તિભાવને અર્પિત આ ભાવસભર સંગીતમય રજૂઆત.',
     category: 'Video',
     timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000,
-  }
+  },
+  {
+    id: 'media-5',
+    title: 'Parmatma Bhakti | Divine Devotional Reel',
+    gujaratiTitle: 'પરમાત્મા ભક્તિ | દિવ્ય ભક્તિમય રીલ',
+    type: 'file_video',
+    url: '/media/parmatma_bhakti.mp4',
+    thumbnail: '/media/Screenshot_3.png',
+    images: [],
+    description: 'આ દિવ્ય પરમાત્મા ભક્તિ રીલ દ્વારા ભક્તિ અને આધ્યાત્મિકતાનો અનુભવ કરો. પરમાત્મા પ્રત્યેની શ્રદ્ધા, શાંતિ અને સકારાત્મક ભાવનાઓથી ભરપૂર આ રજૂઆત દરેકના હૃદયમાં ભક્તિનો પ્રકાશ પ્રગટાવે તેવી શુભકામના.',
+    category: 'Video',
+    timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000,
+  },
+  {
+    id: 'media-6',
+    title: 'Shree Siddhachakra Poojan',
+    gujaratiTitle: 'શ્રી સિદ્ધચક્ર પૂજન',
+    type: 'file_video',
+    url: '/media/sidhh_chakra.mp4',
+    thumbnail: '/media/Screenshot_4.png',
+    images: [],
+    description: 'શ્રી સિદ્ધચક્ર પૂજન જૈન ધર્મનો એક પવિત્ર ધાર્મિક અનુષ્ઠાન છે, જેમાં શ્રી સિદ્ધચક્ર મહાયંત્ર અને નવપદની ભક્તિપૂર્વક આરાધના કરવામાં આવે છે. આ પૂજન શ્રદ્ધા, સાધના અને આધ્યાત્મિક ઉન્નતિનું પ્રતિક છે. આ શુભ પ્રસંગની યાદગાર ક્ષણોને અમારી વિડિયો દ્વારા નિહાળો.',
+    category: 'Video',
+    timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000,
+  },
 
   // ── Example of a local image you've added to public/media/ ──
   // {
