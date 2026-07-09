@@ -274,8 +274,17 @@ const AdminDashboardModal: React.FC<Props> = ({ onClose, sanitizeYouTubeUrl }) =
       const msg = (err as Error)?.message || '';
       if (msg.includes('Cloudinary is not configured')) {
         showToast('Image hosting not set up yet. See setup instructions.', 'error');
+      } else if (msg) {
+        // Any other failure (a bad upload, a rejected file, localStorage full,
+        // etc.) — show it instead of silently doing nothing. Errors thrown by
+        // addMediaItem/updateMediaItem are already toasted by MediaContext,
+        // but errors from the Cloudinary upload step itself (which happens
+        // BEFORE addMediaItem/updateMediaItem is even called) are only
+        // visible here, so we must toast them too.
+        showToast(msg, 'error');
+      } else {
+        showToast('Something went wrong while saving. Please try again.', 'error');
       }
-      // Other errors already toasted by MediaContext
     } finally {
       setSaving(false);
       setUploadState(emptyUpload);
