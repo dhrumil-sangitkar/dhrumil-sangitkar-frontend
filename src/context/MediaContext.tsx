@@ -45,6 +45,17 @@ export const MediaProvider = ({ children }: { children: ReactNode }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // ─── Let the person know when a request is being retried because the
+  // backend looked asleep/unreachable (e.g. Render free-tier cold start) ──
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      showToast(detail || 'Server is waking up — retrying…', 'info');
+    };
+    window.addEventListener('api:retrying', handler);
+    return () => window.removeEventListener('api:retrying', handler);
+  }, [showToast]);
+
   // ─── Load media ───────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
