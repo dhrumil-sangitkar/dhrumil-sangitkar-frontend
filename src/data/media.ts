@@ -94,6 +94,18 @@ export const MEDIA_ITEMS: MediaItem[] = [
     category: 'Video',
     timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000,
   },
+  {
+    id: 'media-7',
+    title: 'Panch Kalyanak Puja',
+    gujaratiTitle: 'પંચ કલ્યાણક પૂજા',
+    type: 'file_video',
+    url: '/media/panchkalyanak/panch_kalyanak.mp4',
+    thumbnail: '/media/panchkalyanak/PanchKalyanak1.png',
+    images: [],
+    description: 'પંચ કલ્યાણક પૂજાની આ ટૂંકી સંગીતમય રીલમાં તીર્થંકર ભગવાનના જીવનના પાંચ કલ્યાણક પ્રસંગોને ભક્તિભાવપૂર્વક રજૂ કરવામાં આવ્યા છે.',
+    category: 'Video',
+    timestamp: Date.now() - 2 * 24 * 60 * 60 * 1000,
+  },
 
   // ── Example of a local image you've added to public/media/ ──
   // {
